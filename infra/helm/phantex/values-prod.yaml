@@ -1,0 +1,129 @@
+# Phantex — Production environment values
+#
+# Usage:
+#   helm install phantex . -f values.yaml -f values-prod.yaml
+
+global:
+  imageRegistry: "ghcr.io/akiilex"
+  imagePullPolicy: IfNotPresent
+
+sensor:
+  enabled: true
+  config:
+    logLevel: warn
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: 300m
+      memory: 128Mi
+
+gateway:
+  replicas: 2
+  terminationGracePeriodSeconds: 30
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPU: 70
+    targetMemory: 80
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  topologySpreadConstraints:
+    enabled: true
+    maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+
+backend:
+  replicas: 2
+  terminationGracePeriodSeconds: 45
+  env:
+    PHANTEX_ENVIRONMENT: production
+    PHANTEX_DEBUG: "false"
+    PHANTEX_LOG_LEVEL: WARNING
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPU: 70
+    targetMemory: 80
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  topologySpreadConstraints:
+    enabled: true
+    maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+
+storageWriter:
+  replicas: 2
+  terminationGracePeriodSeconds: 60
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+dashboard:
+  replicas: 2
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+  host: phantex.example.com            # MUST override
+  tls:
+    enabled: true
+    secretName: phantex-tls
+
+postgresql:
+  internal: false
+  host: ""               # MUST override: e.g. phantex-prod.abcdef.us-east-1.rds.amazonaws.com
+  port: 5432
+  database: phantex
+  username: phantex_app
+  existingSecret: phantex-db-credentials
+  existingSecretKey: password
+
+kafka:
+  internal: false
+  bootstrapServers: ""   # MUST override: e.g. b-1.phantex-prod.abc123.kafka.us-east-1.amazonaws.com:9092
+
+redis:
+  internal: false
+  host: ""               # MUST override: e.g. phantex-prod.abc123.cache.amazonaws.com
+  port: 6379
+
+clickhouse:
+  internal: false
+  host: ""               # MUST override
+  httpPort: 8123
+  existingSecret: phantex-clickhouse-credentials
+  existingSecretKey: password
+
+neo4j:
+  internal: false
+  uri: ""                # MUST override: e.g. bolt://phantex-neo4j-prod:7687
+  boltPort: 7687
+  existingSecret: phantex-neo4j-credentials
+  existingSecretKey: password
+
+secrets:
+  create: false          # Use external secret management (Vault, AWS Secrets Manager, etc.)
+  jwtSecret:
+    existingSecret: phantex-jwt
+    existingSecretKey: secret
+
+networkPolicy:
+  enabled: true
+
+podSecurityStandards:
+  enforce: restricted

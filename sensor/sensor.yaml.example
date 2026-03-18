@@ -1,0 +1,88 @@
+# Phantex Sensor — Example configuration
+#
+# Copy this file to /etc/phantex/sensor.yaml and adjust for your environment.
+#
+# Environment variable overrides (highest precedence):
+#   PHANTEX_AUTH_TOKEN   — gRPC auth token (always use in production)
+#   PHANTEX_SENSOR_ID    — override sensor_id
+#   PHANTEX_TENANT_ID    — override tenant_id
+
+# ── Sensor identity ───────────────────────────────────────────────────────────
+# sensor_id: ""          # Auto-generated UUID if empty
+# tenant_id: ""          # Required for multi-tenant deployments
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+log_level: info           # debug | info | warn | error
+log_format: json          # json | console
+
+# ── eBPF probes ───────────────────────────────────────────────────────────────
+ebpf:
+  filter_mode: filtered   # all (trace every process) | filtered (only tracked AI agent/MCP PIDs)
+  ringbuf_chan_size: 4096  # Go-side ring buffer channel capacity
+
+# ── Transport (gRPC to gateway) ───────────────────────────────────────────────
+transport:
+  gateway_addr: "localhost:50051"      # Gateway gRPC endpoint
+  # auth_token: ""                     # Prefer PHANTEX_AUTH_TOKEN env var
+
+  # TLS (strongly recommended in production)
+  tls_enabled: false
+  # tls_cert_file: /etc/phantex/tls/client.crt
+  # tls_key_file:  /etc/phantex/tls/client.key
+  # tls_ca_file:   /etc/phantex/tls/ca.crt
+
+  # Batching
+  batch_size: 100          # Events per gRPC batch
+  batch_timeout: 1s        # Max time before forced flush
+  buffer_size: 10000       # Offline buffer capacity (events)
+
+  # Retry
+  max_retries: 5
+  retry_interval: 2s
+
+# ── Health check HTTP server ──────────────────────────────────────────────────
+health:
+  enabled: true
+  addr: ":9090"            # Liveness probe: GET /healthz → {"status":"ok",...}
+
+# ── Performance tuning ────────────────────────────────────────────────────────
+performance:
+  max_events_per_sec: 0          # 0 = unlimited
+  enricher_cache_ttl: 30s        # /proc metadata cache TTL
+
+# ── AI Agent discovery ────────────────────────────────────────────────────────
+discovery:
+  scan_interval: 30s             # How often to scan /proc for new agent processes
+  tenant_slug: default           # Used in PAID generation (e.g., "acme")
+  env_tag: dev                   # Environment tag for PAID (e.g., "prod", "staging")
+  check_environ: false           # Read /proc/<pid>/environ (needs ptrace cap)
+
+  # Additional binary names to treat as AI agent processes.
+  # Use this for Go, Rust, or C++ agents that don't run under an interpreter.
+  # The sensor will match these against /proc/<pid>/comm and cmdline.
+  # watch_binaries:
+  #   - my-go-agent
+  #   - custom-llm-proxy
+  #   - rust-agent
+
+  # Self-exclusion: skip PHANTEX platform processes (uvicorn, celery, gateway, etc.)
+  # from being mistakenly registered as discovered AI agents. Default: true.
+  exclude_self: true
+
+  # Group forked worker processes (gunicorn/uvicorn workers) under a single
+  # agent entry using parent PID grouping. Default: true.
+  deduplicate_workers: true
+
+  # Additional cmdline substrings to exclude from agent discovery.
+  # Processes whose cmdline contains any of these patterns will be skipped.
+  # exclude_patterns:
+  #   - my-internal-service
+  #   - monitoring-agent
+
+# ── SDK Unix socket (receives events from Python/Node SDK) ───────────────────
+sdk_socket:
+  enabled: true
+  socket_path: /var/run/phantex/sdk.sock
+  max_conns: 50
+  max_line_size: 65536           # 64 KiB max NDJSON line
+  rate_limit: 1000               # Max events/sec per connection

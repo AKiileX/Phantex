@@ -1,0 +1,22 @@
+# Rule: prompt_injection_pattern
+# Category: Prompt Injection
+# Severity: critical
+# Attack Class: prompt_injection
+#
+# Detects known prompt injection patterns in tool call arguments.
+# Prompt injection is the primary attack vector against AI agents — malicious
+# instructions embedded in data trick the agent into unintended actions.
+#
+# Patterns detected:
+#   - "ignore previous instructions" / "ignore all previous instructions"
+#   - "system prompt override" / "new system prompt"
+#   - "you are now" (role reassignment)
+#   - "disregard" + "instructions" / "rules"
+#   - Base64-encoded instructions (aW1wb3J0, base64 for "import")
+#   - Common jailbreak markers
+#
+# This rule fires on TOOL_CALL events where the tool_input contains these patterns.
+# Future versions will use ML-based injection detection (Phase 3).
+
+event.type == "TOOL_CALL"
+AND regex_match("(?i)(ignore\\s+(all\\s+)?(previous|prior|above)\\s+(instructions|prompts|rules)|ignore\\s+(previous|all|above|prior)\\s+(instructions|prompts|rules)|system prompt\\s*(override|injection|change|leak|exfil)|you are now|pretend you are|act as if|disregard .{0,20}(instructions|rules|guidelines)|new system prompt|forget .{0,20}(instructions|rules|context)|override .{0,20}(safety|guardrail|filter)|<\\|im_start\\|>system|\\[INST\\]|<<SYS>>|aW1wb3J0|base64 -d|\\beval\\s*\\(|\\bexec\\s*\\(|SYSTEM OVERRIDE|DAN\\s*mode|jailbreak)", event.raw_data.tool_input)

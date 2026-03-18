@@ -1,0 +1,81 @@
+{{- if .Values.clickhouse.schemaInit.enabled }}
+# Pre-deploy Job that applies ClickHouse schema migrations.
+# Runs as a Helm pre-install/pre-upgrade hook.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "phantex.fullname" . }}-clickhouse-schema-init
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse-schema
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.clickhouse.schemaInit.backoffLimit | default 3 }}
+  activeDeadlineSeconds: {{ .Values.clickhouse.schemaInit.timeout | default 120 }}
+  template:
+    metadata:
+      labels:
+        {{- include "phantex.selectorLabels" (dict "name" "phantex-ch-schema-init" "release" .Release.Name) | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: schema-init
+          image: {{ .Values.clickhouse.schemaInit.image | default "curlimages/curl:8.7.1" }}
+          command: ["sh", "/scripts/apply.sh"]
+          env:
+            - name: CH_HOST
+              value: {{ .Values.clickhouse.host | quote }}
+            - name: CH_PORT
+              value: {{ .Values.clickhouse.httpPort | default 8123 | quote }}
+            - name: CH_USER
+              value: {{ .Values.clickhouse.user | default "phantex" | quote }}
+            - name: CH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.clickhouse.existingSecret }}
+                  key: {{ .Values.clickhouse.existingSecretKey }}
+          volumeMounts:
+            - name: schema-files
+              mountPath: /schema
+              readOnly: true
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: schema-files
+          configMap:
+            name: {{ include "phantex.fullname" . }}-clickhouse-schema
+            items:
+              {{- range $path, $_ := .Files.Glob "clickhouse-schema/*.sql" }}
+              - key: {{ base $path }}
+                path: {{ base $path }}
+              {{- end }}
+        - name: scripts
+          configMap:
+            name: {{ include "phantex.fullname" . }}-clickhouse-schema
+            defaultMode: 0555
+            items:
+              - key: apply.sh
+                path: apply.sh
+{{- end }}

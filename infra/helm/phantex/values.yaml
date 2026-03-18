@@ -1,0 +1,354 @@
+# Phantex Helm Chart — Default Values
+#
+# Override per-environment with: helm install phantex . -f values-prod.yaml
+
+# ── Global ────────────────────────────────────────────────────────────────────
+global:
+  imageRegistry: ""                    # e.g. ghcr.io/akiilex
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+# ── Service Account ───────────────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  name: ""                             # defaults to {{ fullname }}
+  annotations: {}                      # e.g. eks.amazonaws.com/role-arn for IRSA
+
+# ── Sensor (DaemonSet — runs on every node) ───────────────────────────────────
+sensor:
+  enabled: true
+  image:
+    repository: phantex-sensor
+    tag: ""                            # defaults to Chart appVersion
+  config:
+    gatewayAddress: "phantex-gateway:50051"
+    logLevel: info
+    tenantID: ""                       # required: set via values override
+    tenantSlug: "default"              # used for PAID generation
+    envTag: prod                       # used for PAID generation
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  # Canary rollout (ADR-011): update 5% of nodes, wait, then roll out
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: "5%"
+  tolerations:
+    - operator: Exists                 # run on ALL nodes including tainted ones
+
+# ── Gateway (gRPC sensor intake) ──────────────────────────────────────────────
+gateway:
+  replicas: 2
+  image:
+    repository: phantex-gateway
+    tag: ""
+  port: 50051
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  terminationGracePeriodSeconds: 30
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPU: 70
+    targetMemory: 80
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  topologySpreadConstraints:
+    enabled: false
+    maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+
+# ── Backend API ───────────────────────────────────────────────────────────────
+backend:
+  replicas: 2
+  image:
+    repository: phantex-backend
+    tag: ""
+  port: 8000
+  env:
+    PHANTEX_ENVIRONMENT: production
+    PHANTEX_DEBUG: "false"
+    PHANTEX_LOG_LEVEL: INFO
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+  terminationGracePeriodSeconds: 45
+  startupProbe:
+    httpGet:
+      path: /healthz
+      port: 8000
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    failureThreshold: 20           # max 105s startup window
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPU: 70
+    targetMemory: 80
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  topologySpreadConstraints:
+    enabled: false
+    maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+
+# ── Storage Writer (Kafka consumer → PG/CH/Neo4j) ────────────────────────────
+storageWriter:
+  replicas: 2
+  image:
+    repository: phantex-backend
+    tag: ""                            # same image as backend
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  terminationGracePeriodSeconds: 60    # allow in-flight batches to flush
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+dashboard:
+  replicas: 2
+  image:
+    repository: phantex-dashboard
+    tag: ""
+  port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+# ── Trust Engine (Rust gRPC — graph scoring) ──────────────────────────────
+trustEngine:
+  enabled: true
+  replicas: 2
+  image:
+    repository: phantex-trust-engine
+    tag: ""
+  port: 50052
+  tls:
+    enabled: false
+    certSecret: phantex-trust-engine-tls     # k8s secret with tls.crt, tls.key
+    caSecret: phantex-trust-engine-ca        # k8s secret with ca.crt (for mTLS)
+  apiKey:
+    existingSecret: phantex-trust-engine-key
+    existingSecretKey: api-key
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+    accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── Rule Engine (PRL evaluator — Kafka consumer) ─────────────────────────
+ruleEngine:
+  replicas: 1
+  image:
+    repository: phantex-backend         # same image as backend
+    tag: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── ML Pipeline Consumers ─────────────────────────────────────────────────
+mlPipeline:
+  consumers:
+    features:
+      enabled: true
+      replicas: 1
+      command: ["python", "-m", "ml.main_features"]
+      needsDB: true
+      modelVolume: false
+      image:
+        repository: phantex-backend
+        tag: ""
+      resources:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    inference:
+      enabled: true
+      replicas: 1
+      command: ["python", "-m", "ml.main_inference"]
+      needsDB: true
+      modelVolume: true                # needs /models mount for ONNX artefacts
+      image:
+        repository: phantex-backend
+        tag: ""
+      resources:
+        requests:
+          cpu: 500m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+    baseline:
+      enabled: true
+      replicas: 1
+      command: ["python", "-m", "ml.main_baseline"]
+      needsDB: true
+      modelVolume: false
+      image:
+        repository: phantex-backend
+        tag: ""
+      resources:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    content:
+      enabled: true
+      replicas: 1
+      command: ["python", "-m", "ml.main_content"]
+      needsDB: false                   # content analysis is stateless (Kafka + Redis)
+      modelVolume: false
+      image:
+        repository: phantex-backend
+        tag: ""
+      resources:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+# ── Ingress ───────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"       # WebSocket keep-alive
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+    nginx.ingress.kubernetes.io/server-snippets: |
+      add_header X-Frame-Options "DENY" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+  host: phantex.example.com
+  tls:
+    enabled: true
+    secretName: phantex-tls
+
+# ── PostgreSQL (external in production — internal for dev) ────────────────────
+postgresql:
+  # Set to false when using external managed database (RDS, Cloud SQL, etc.)
+  internal: false
+  host: ""                             # external DB host
+  port: 5432
+  database: phantex
+  username: phantex_app
+  # Password via existingSecret
+  existingSecret: phantex-db-credentials
+  existingSecretKey: password
+
+# ── Kafka (external in production — internal for dev) ─────────────────────────
+kafka:
+  # Set to false when using managed Kafka (MSK, Confluent Cloud, etc.)
+  internal: false
+  bootstrapServers: ""                 # external Kafka bootstrap
+  port: 9092                           # Kafka broker port (used by NetworkPolicy)
+
+# ── Redis ─────────────────────────────────────────────────────────────────────
+redis:
+  internal: false
+  host: ""                             # external Redis host (ElastiCache, etc.)
+  port: 6379
+  # Full URL override (takes precedence if set)
+  url: ""                              # e.g. redis://phantex-redis:6379/0
+
+# ── ClickHouse ────────────────────────────────────────────────────────────────
+clickhouse:
+  internal: false
+  host: ""                             # external ClickHouse host
+  httpPort: 8123
+  nativePort: 9000
+  user: phantex
+  existingSecret: phantex-clickhouse-credentials
+  existingSecretKey: password
+  # Schema init Job — applies SQL migrations on install/upgrade
+  schemaInit:
+    enabled: true
+    image: "curlimages/curl:8.7.1"     # lightweight image with curl + sh
+    backoffLimit: 3
+    timeout: 120                        # seconds
+
+# ── Neo4j ─────────────────────────────────────────────────────────────────────
+neo4j:
+  internal: false
+  uri: ""                              # e.g. bolt://phantex-neo4j:7687
+  boltPort: 7687
+  existingSecret: phantex-neo4j-credentials
+  existingSecretKey: password
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+secrets:
+  # Create Kubernetes secrets before deploying:
+  #   kubectl create secret generic phantex-db-credentials --from-literal=password=xxx
+  #   kubectl create secret generic phantex-jwt --from-literal=secret=xxx
+  #   kubectl create secret generic phantex-sensor-token --from-literal=token=xxx
+  #   kubectl create secret generic phantex-clickhouse-credentials --from-literal=password=xxx
+  #   kubectl create secret generic phantex-neo4j-credentials --from-literal=password=xxx
+  create: false
+  jwtSecret:
+    existingSecret: phantex-jwt
+    existingSecretKey: secret
+
+# ── Network Policy ────────────────────────────────────────────────────────────
+networkPolicy:
+  enabled: true
+  ingressNamespace: ingress-nginx
+  # Namespace where PostgreSQL, Kafka, Redis, ClickHouse, Neo4j live
+  dataNamespace: ""
+  # CIDRs allowed to reach the gateway from outside the cluster.
+  externalSensorCIDRs: []
+
+# ── Pod Security ──────────────────────────────────────────────────────────────
+podSecurityStandards:
+  # "restricted" for all services except sensor
+  # sensor gets "privileged" (required for eBPF)
+  enforce: restricted

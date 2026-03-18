@@ -1,0 +1,18 @@
+# Rule: trust_score_critical_drop
+# Category: Trust Violation
+# Severity: critical
+# Attack Class: trust_degradation
+#
+# Fires when an agent's real-time trust score from the Rust Trust Graph
+# Engine drops below 0.3 — indicating sustained malicious or anomalous
+# behaviour across the history, behavior, permissions, and reputation
+# dimensions.
+#
+# The trust_score() PRL function queries the gRPC Trust Engine.  If the
+# engine is unreachable it returns 0.5 (neutral), so this rule will NOT
+# false-fire during Trust Engine downtime.
+#
+# Companion rule: trust_score_low_warning (medium severity, threshold 0.5)
+# fires earlier as an early-warning signal.
+
+trust_score(event.agent_id, "agent") < 0.3

@@ -1,0 +1,17 @@
+# buf.yaml — Phantex Protobuf workspace configuration
+# Docs: https://buf.build/docs/configuration/v2/buf-yaml
+version: v2
+
+modules:
+  - path: .
+
+lint:
+  use:
+    - STANDARD
+  except:
+    # We use UPPER_SNAKE_CASE enum values starting at 0, which is conventional
+    - ENUM_ZERO_VALUE_SUFFIX
+
+breaking:
+  use:
+    - FILE

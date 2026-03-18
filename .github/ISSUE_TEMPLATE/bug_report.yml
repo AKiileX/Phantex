@@ -1,0 +1,78 @@
+name: Bug Report
+description: Report a bug in Phantex
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+  - type: input
+    id: version
+    attributes:
+      label: Phantex Version
+      description: Output of `phantex version` or the Docker image tag.
+      placeholder: v0.9.0
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Sensor
+        - Gateway
+        - Backend API
+        - Dashboard
+        - Trust Engine
+        - CLI
+        - SDK
+        - Infrastructure / Helm
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps to reproduce the behaviour.
+      placeholder: |
+        1. Deploy with `docker compose up`
+        2. Send events via SDK
+        3. Observe error in logs
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs / Screenshots
+      description: Paste any relevant log output (redact secrets).
+      render: shell
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, kernel version, container runtime, etc.
+      placeholder: |
+        - OS: Ubuntu 24.04
+        - Kernel: 6.8.0
+        - Docker: 27.0
+        - K8s: 1.30

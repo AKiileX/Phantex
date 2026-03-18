@@ -1,0 +1,260 @@
+category: Endpoint
+commonfields:
+  id: Phantex
+  version: -1
+configuration:
+  - display: Phantex API URL
+    name: url
+    required: true
+    type: 0
+    defaultvalue: "https://phantex.example.com"
+    additionalinfo: "Base URL of your Phantex instance (e.g. https://phantex.corp.com)"
+
+  - display: API Key
+    name: api_key
+    required: true
+    type: 4
+    additionalinfo: "SOAR API key from Phantex (starts with phx_sk_)"
+
+  - display: Fetch incidents
+    name: isFetch
+    type: 8
+    defaultvalue: "true"
+    required: false
+
+  - display: Incident type
+    name: incidentType
+    type: 13
+    required: false
+
+  - display: First fetch timestamp
+    name: first_fetch
+    type: 0
+    defaultvalue: "3 days"
+    required: false
+
+  - display: Max fetch
+    name: max_fetch
+    type: 0
+    defaultvalue: "50"
+    required: false
+
+  - display: Minimum severity
+    name: min_severity
+    type: 15
+    options:
+      - info
+      - low
+      - medium
+      - high
+      - critical
+    defaultvalue: "medium"
+    required: false
+
+  - display: Verify SSL
+    name: insecure
+    type: 8
+    defaultvalue: "true"
+    required: false
+
+description: |
+  Phantex EDR integration for Cortex XSOAR.
+  
+  Capabilities:
+  - Fetch alerts as XSOAR incidents
+  - Enrich alerts with agent context, trust scores, and ATLAS MITRE mapping
+  - Execute response actions (isolate, acknowledge, resolve, escalate, forensics)
+  - Query alert history and action audit logs
+
+display: Phantex EDR
+name: Phantex
+script:
+  type: python
+  subtype: python3
+  dockerimage: demisto/python3:3.10.13
+  isfetch: true
+  commands:
+    - name: phantex-get-alerts
+      description: Fetch alerts from Phantex with optional filters
+      arguments:
+        - name: status
+          description: "Filter by status (open, acknowledged, resolved, escalated)"
+          required: false
+        - name: severity
+          description: "Filter by severity (info, low, medium, high, critical)"
+          required: false
+        - name: limit
+          description: "Maximum number of alerts to return"
+          required: false
+          defaultValue: "50"
+        - name: since
+          description: "Fetch alerts created after this timestamp (ISO 8601)"
+          required: false
+      outputs:
+        - contextPath: Phantex.Alert.id
+          description: Alert ID
+          type: String
+        - contextPath: Phantex.Alert.title
+          description: Alert title / rule name
+          type: String
+        - contextPath: Phantex.Alert.severity
+          description: Alert severity
+          type: String
+        - contextPath: Phantex.Alert.status
+          description: Alert status
+          type: String
+        - contextPath: Phantex.Alert.agent_id
+          description: Agent that triggered the alert
+          type: String
+        - contextPath: Phantex.Alert.event_type
+          description: Event type (PROCESS_START, FILE_ACCESS, etc.)
+          type: String
+        - contextPath: Phantex.Alert.attack_class
+          description: ATLAS attack classification
+          type: String
+        - contextPath: Phantex.Alert.confidence
+          description: Alert confidence score
+          type: Number
+        - contextPath: Phantex.Alert.created_at
+          description: Alert creation timestamp
+          type: Date
+
+    - name: phantex-enrich-alert
+      description: Get full enrichment for an alert including agent context, timeline, and ATLAS mapping
+      arguments:
+        - name: alert_id
+          description: "The alert ID to enrich"
+          required: true
+      outputs:
+        - contextPath: Phantex.Enrichment.alert_id
+          description: Alert ID
+          type: String
+        - contextPath: Phantex.Enrichment.severity
+          description: Severity
+          type: String
+        - contextPath: Phantex.Enrichment.agent_hostname
+          description: Agent hostname
+          type: String
+        - contextPath: Phantex.Enrichment.agent_trust_score
+          description: Agent trust score (0-100)
+          type: Number
+        - contextPath: Phantex.Enrichment.atlas_mapping
+          description: ATLAS MITRE technique mapping
+          type: Unknown
+        - contextPath: Phantex.Enrichment.timeline
+          description: Related events from the same agent
+          type: Unknown
+        - contextPath: Phantex.Enrichment.related_alerts
+          description: Alerts with the same attack class in last 24h
+          type: Unknown
+
+    - name: phantex-isolate-agent
+      description: Isolate an agent from the network
+      arguments:
+        - name: agent_id
+          description: "Agent ID to isolate"
+          required: true
+        - name: reason
+          description: "Justification for isolation"
+          required: false
+          defaultValue: "XSOAR automated response"
+      outputs:
+        - contextPath: Phantex.Action.id
+          description: Action ID
+          type: String
+        - contextPath: Phantex.Action.result
+          description: Action result (success/error)
+          type: String
+
+    - name: phantex-acknowledge-alert
+      description: Acknowledge an alert
+      arguments:
+        - name: alert_id
+          description: "Alert ID to acknowledge"
+          required: true
+        - name: reason
+          description: "Acknowledgement reason"
+          required: false
+          defaultValue: "Acknowledged via XSOAR"
+      outputs:
+        - contextPath: Phantex.Action.id
+          type: String
+        - contextPath: Phantex.Action.result
+          type: String
+
+    - name: phantex-resolve-alert
+      description: Resolve an alert
+      arguments:
+        - name: alert_id
+          description: "Alert ID to resolve"
+          required: true
+        - name: reason
+          description: "Resolution reason"
+          required: false
+          defaultValue: "Resolved via XSOAR"
+      outputs:
+        - contextPath: Phantex.Action.id
+          type: String
+        - contextPath: Phantex.Action.result
+          type: String
+
+    - name: phantex-escalate-alert
+      description: Escalate an alert to critical severity
+      arguments:
+        - name: alert_id
+          description: "Alert ID to escalate"
+          required: true
+        - name: reason
+          description: "Escalation reason"
+          required: false
+          defaultValue: "Escalated via XSOAR"
+      outputs:
+        - contextPath: Phantex.Action.id
+          type: String
+        - contextPath: Phantex.Action.result
+          type: String
+
+    - name: phantex-trust-penalty
+      description: Apply a trust penalty to an agent
+      arguments:
+        - name: agent_id
+          description: "Agent ID to penalize"
+          required: true
+        - name: reason
+          description: "Penalty reason"
+          required: false
+          defaultValue: "Trust penalty via XSOAR"
+      outputs:
+        - contextPath: Phantex.Action.id
+          type: String
+        - contextPath: Phantex.Action.result
+          type: String
+
+    - name: phantex-collect-forensics
+      description: Trigger forensic data collection on an agent
+      arguments:
+        - name: agent_id
+          description: "Agent ID to collect from"
+          required: true
+        - name: reason
+          description: "Collection reason"
+          required: false
+          defaultValue: "Forensics collection via XSOAR"
+      outputs:
+        - contextPath: Phantex.Action.id
+          type: String
+        - contextPath: Phantex.Action.result
+          type: String
+
+    - name: phantex-get-action-log
+      description: Get the audit log of SOAR-initiated actions
+      arguments:
+        - name: limit
+          description: "Max entries"
+          required: false
+          defaultValue: "50"
+      outputs:
+        - contextPath: Phantex.ActionLog.total
+          type: Number
+        - contextPath: Phantex.ActionLog.entries
+          type: Unknown

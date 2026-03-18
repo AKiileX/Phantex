@@ -1,0 +1,190 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025-2026 The Phantex Authors
+
+// Phantex sensor service — gRPC interface between sensor and gateway.
+//
+// The sensor opens a bidirectional stream to the gateway and pushes
+// batches of events. The gateway acknowledges each batch and can send
+// control commands back (e.g., start/stop PID tracking, reconfigure).
+//
+// Auth: sensor provides a bearer token (JWT in production, static in Phase 1).
+// Transport: TLS 1.3 mandatory in production; plaintext allowed in dev mode.
+syntax = "proto3";
+
+package phantex.v1;
+
+option go_package = "phantex/v1";
+
+import "phantex/v1/events.proto";
+import "google/protobuf/timestamp.proto";
+
+// ─── Sensor → Gateway Streaming Service ────────────────────────────────────────
+
+// SensorService is the gRPC service that sensors connect to on the gateway.
+service SensorService {
+  // IngestEvents opens a bidirectional stream.
+  //   - Sensor sends EventBatch messages (batched events).
+  //   - Gateway sends EventAck messages (acknowledging receipt).
+  rpc IngestEvents(stream IngestEventsRequest) returns (stream IngestEventsResponse);
+
+  // Heartbeat is a simple health check (also used for clock sync metadata).
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // RegisterSensor is called once on startup. Gateway validates the token,
+  // records the sensor, and returns its assigned configuration.
+  rpc RegisterSensor(RegisterSensorRequest) returns (RegisterSensorResponse);
+}
+
+// ─── Event Ingestion ───────────────────────────────────────────────────────────
+
+// IngestEventsRequest is a batch of events sent from sensor to gateway.
+// Batching amortizes the per-event overhead on the wire.
+message IngestEventsRequest {
+  // Sequential batch ID for this sensor session (for ack tracking).
+  uint64 batch_id = 1;
+
+  // The sensor instance ID (set once, same for all batches in a session).
+  string sensor_id = 2;
+
+  // Tenant ID (validated by gateway against the sensor's token).
+  string tenant_id = 3;
+
+  // The events in this batch.
+  repeated PhantexEvent events = 4;
+
+  // When this batch was assembled (sensor clock).
+  google.protobuf.Timestamp sent_at = 5;
+
+  // Number of events dropped since last batch (backpressure indicator).
+  uint64 events_dropped = 6;
+}
+
+// IngestEventsResponse is sent from gateway to sensor to acknowledge a batch.
+message IngestEventsResponse {
+  // The batch_id being acknowledged.
+  uint64 batch_id = 1;
+
+  // Whether the batch was accepted.
+  bool accepted = 2;
+
+  // If not accepted, a human-readable reason (e.g., "invalid tenant_id").
+  string reject_reason = 3;
+
+  // Gateway-side timestamp (for clock drift detection).
+  google.protobuf.Timestamp server_time = 4;
+}
+
+// ─── Heartbeat ─────────────────────────────────────────────────────────────────
+
+message HeartbeatRequest {
+  string sensor_id = 1;
+  google.protobuf.Timestamp client_time = 2;
+
+  // Sensor health metrics
+  SensorMetrics metrics = 3;
+}
+
+message HeartbeatResponse {
+  google.protobuf.Timestamp server_time = 1;
+
+  // Optional: control commands from gateway
+  repeated ControlCommand commands = 2;
+}
+
+// SensorMetrics are sent with heartbeats for monitoring.
+message SensorMetrics {
+  uint64 events_read       = 1;  // total events read from ring buffer
+  uint64 events_sent       = 2;  // total events sent to gateway
+  uint64 events_dropped    = 3;  // total events dropped (backpressure)
+  uint64 parse_errors      = 4;  // events that failed to parse
+  uint32 probes_loaded     = 5;  // number of eBPF probes active
+  uint32 agents_tracked    = 6;  // number of AI agents currently tracked
+  uint64 uptime_seconds    = 7;
+  float  cpu_percent       = 8;  // sensor process CPU usage
+  uint64 memory_bytes      = 9;  // sensor process RSS
+  uint64 buffer_used       = 10; // events currently buffered (not yet sent)
+  uint32 probes_total      = 11; // total number of probes (loaded + failed)
+}
+
+// ─── Sensor Registration ───────────────────────────────────────────────────────
+
+message RegisterSensorRequest {
+  string sensor_id  = 1;  // sensor-generated UUID
+  string tenant_id  = 2;  // from sensor config
+  string auth_token = 3;  // bearer token (JWT in production)
+  string version    = 4;  // sensor binary version
+  string hostname   = 5;  // machine hostname
+  string kernel     = 6;  // kernel version (uname -r)
+  string arch       = 7;  // CPU architecture (amd64, arm64)
+}
+
+message RegisterSensorResponse {
+  bool   accepted    = 1;
+  string reject_reason = 2;  // if not accepted
+
+  // Configuration overrides from the gateway (optional).
+  SensorConfig config = 3;
+}
+
+// SensorConfig can be pushed from gateway to override local sensor settings.
+message SensorConfig {
+  // PID filter mode: "all" or "filtered"
+  string filter_mode = 1;
+
+  // PIDs to track (only if filter_mode == "filtered")
+  repeated uint32 tracked_pids = 2;
+
+  // Batch settings
+  uint32 batch_size    = 3;
+  uint32 batch_timeout_ms = 4;
+
+  // Scan interval for agent discovery (seconds)
+  uint32 scan_interval_seconds = 5;
+}
+
+// ─── Control Commands ──────────────────────────────────────────────────────────
+
+// ControlCommand is sent from gateway to sensor (via heartbeat or stream).
+message ControlCommand {
+  ControlAction action = 1;
+  map<string, string> params = 2;  // action-specific parameters
+  string command_id = 3;           // unique ID for tracking/ack
+}
+
+// ControlAction enumerates commands the gateway can send to a sensor.
+enum ControlAction {
+  CONTROL_ACTION_UNSPECIFIED = 0;
+
+  // PID tracking
+  CONTROL_ACTION_TRACK_PID   = 1;  // params: {"pid": "1234"}
+  CONTROL_ACTION_UNTRACK_PID = 2;  // params: {"pid": "1234"}
+
+  // Filter mode
+  CONTROL_ACTION_SET_FILTER_MODE = 3;  // params: {"mode": "all"|"filtered"}
+
+  // Configuration reload
+  CONTROL_ACTION_RELOAD_CONFIG = 10;
+
+  // ── Response Actions (SOC-driven) ──────────────────────
+  // Isolate the host: block all network except Phantex gateway
+  CONTROL_ACTION_ISOLATE_HOST = 20;     // params: {"gateway_addr": "..."}
+  // Lift network isolation
+  CONTROL_ACTION_UNISOLATE_HOST = 21;
+
+  // Kill a process by PID
+  CONTROL_ACTION_KILL_PROCESS = 22;     // params: {"pid": "1234"}
+
+  // Block outbound IP via host firewall
+  CONTROL_ACTION_BLOCK_IP = 23;         // params: {"ip": "1.2.3.4", "direction": "outbound"}
+  // Unblock previously blocked IP
+  CONTROL_ACTION_UNBLOCK_IP = 24;       // params: {"ip": "1.2.3.4"}
+
+  // Quarantine/restrict a file path
+  CONTROL_ACTION_QUARANTINE_FILE = 25;  // params: {"path": "/tmp/malware.bin"}
+
+  // Collect forensic snapshot (memory dump, process list, netstat)
+  CONTROL_ACTION_COLLECT_FORENSICS = 26;
+
+  // Graceful shutdown
+  CONTROL_ACTION_SHUTDOWN = 99;
+}

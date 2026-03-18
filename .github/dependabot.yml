@@ -1,0 +1,184 @@
+# ============================================================================
+# Phantex — Dependabot Configuration
+# Automated dependency update PRs across all stacks.
+# ============================================================================
+version: 2
+
+registries:
+  ghcr:
+    type: docker-registry
+    url: https://ghcr.io
+    username: ${{ secrets.GHCR_USER }}
+    password: ${{ secrets.GHCR_TOKEN }}
+
+updates:
+  # ── Go: Sensor ───────────────────────────────────────────────────
+  - package-ecosystem: gomod
+    directory: /sensor
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    labels:
+      - dependencies
+      - go
+      - sensor
+    reviewers:
+      - AKiileX
+    commit-message:
+      prefix: "deps(sensor):"
+    open-pull-requests-limit: 5
+
+  # ── Go: Gateway ──────────────────────────────────────────────────
+  - package-ecosystem: gomod
+    directory: /gateway
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    labels:
+      - dependencies
+      - go
+      - gateway
+    reviewers:
+      - AKiileX
+    commit-message:
+      prefix: "deps(gateway):"
+    open-pull-requests-limit: 5
+
+  # ── Python: Backend ──────────────────────────────────────────────
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    labels:
+      - dependencies
+      - python
+      - backend
+    reviewers:
+      - AKiileX
+    commit-message:
+      prefix: "deps(backend):"
+    open-pull-requests-limit: 5
+
+  # ── Python: Engine ───────────────────────────────────────────────
+  - package-ecosystem: pip
+    directory: /engine
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    labels:
+      - dependencies
+      - python
+      - engine
+    reviewers:
+      - AKiileX
+    commit-message:
+      prefix: "deps(engine):"
+    open-pull-requests-limit: 5
+
+  # ── Python: SDK ──────────────────────────────────────────────────
+  - package-ecosystem: pip
+    directory: /sdk
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    labels:
+      - dependencies
+      - python
+      - sdk
+    reviewers:
+      - AKiileX
+    commit-message:
+      prefix: "deps(sdk):"
+    open-pull-requests-limit: 5
+
+  # ── npm: Dashboard ───────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /dashboard
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    labels:
+      - dependencies
+      - javascript
+      - dashboard
+    reviewers:
+      - AKiileX
+    commit-message:
+      prefix: "deps(dashboard):"
+    open-pull-requests-limit: 5
+
+  # ── Docker: All Dockerfiles ──────────────────────────────────────
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "06:00"
+      timezone: America/New_York
+    labels:
+      - dependencies
+      - docker
+    reviewers:
+      - AKiileX
+    commit-message:
+      prefix: "deps(docker):"
+
+  - package-ecosystem: docker
+    directory: /dashboard
+    schedule:
+      interval: weekly
+      day: tuesday
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: "deps(docker):"
+
+  - package-ecosystem: docker
+    directory: /sensor
+    schedule:
+      interval: weekly
+      day: tuesday
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: "deps(docker):"
+
+  - package-ecosystem: docker
+    directory: /gateway
+    schedule:
+      interval: weekly
+      day: tuesday
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: "deps(docker):"
+
+  # ── GitHub Actions ───────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: wednesday
+    labels:
+      - dependencies
+      - ci
+    reviewers:
+      - AKiileX
+    commit-message:
+      prefix: "deps(ci):"

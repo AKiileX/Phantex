@@ -1,0 +1,176 @@
+{
+  "name": "Phantex EDR — Alert Triage",
+  "description": "Tines story template for Phantex EDR integration. Fetches alerts, enriches with agent context and trust scoring, and auto-triages based on severity and trust thresholds.",
+  "version": "1.0.0",
+  "agents": [
+    {
+      "name": "Fetch Phantex Alerts",
+      "type": "httpRequest",
+      "description": "Poll Phantex for new alerts (scheduled every 60s)",
+      "options": {
+        "url": "{{.RESOURCE.phantex_base_url}}/api/v1/soar/ext/alerts?status=open&limit=50&since={{.last_run_time}}",
+        "method": "GET",
+        "headers": {
+          "X-Phantex-Api-Key": "{{.CREDENTIAL.phantex_api_key}}",
+          "Content-Type": "application/json"
+        },
+        "expected_update_period_in_days": 1
+      },
+      "schedule": {
+        "cron": "*/1 * * * *"
+      }
+    },
+    {
+      "name": "Explode Alerts",
+      "type": "eventTransformation",
+      "description": "Split batch into individual alert events",
+      "options": {
+        "mode": "explode",
+        "path": "{{.fetch_phantex_alerts.body.alerts}}"
+      },
+      "receives_events_from": ["Fetch Phantex Alerts"]
+    },
+    {
+      "name": "Enrich Alert",
+      "type": "httpRequest",
+      "description": "Get full enrichment including agent context, trust score, and ATLAS mapping",
+      "options": {
+        "url": "{{.RESOURCE.phantex_base_url}}/api/v1/soar/ext/alerts/{{.explode_alerts.id}}/enrich",
+        "method": "GET",
+        "headers": {
+          "X-Phantex-Api-Key": "{{.CREDENTIAL.phantex_api_key}}"
+        }
+      },
+      "receives_events_from": ["Explode Alerts"]
+    },
+    {
+      "name": "Triage Decision",
+      "type": "trigger",
+      "description": "Route based on trust score and severity",
+      "options": {
+        "rules": [
+          {
+            "type": "regex",
+            "value": "critical|high",
+            "path": "{{.enrich_alert.body.severity}}",
+            "emit": "critical_alert"
+          },
+          {
+            "type": "field<value",
+            "value": 30,
+            "path": "{{.enrich_alert.body.agent_trust_score}}",
+            "emit": "low_trust"
+          },
+          {
+            "type": "field<value",
+            "value": 60,
+            "path": "{{.enrich_alert.body.agent_trust_score}}",
+            "emit": "medium_trust"
+          }
+        ],
+        "default_emit": "low_risk"
+      },
+      "receives_events_from": ["Enrich Alert"]
+    },
+    {
+      "name": "Isolate Agent",
+      "type": "httpRequest",
+      "description": "Auto-isolate agent with trust < 30 or critical severity",
+      "options": {
+        "url": "{{.RESOURCE.phantex_base_url}}/api/v1/soar/ext/actions",
+        "method": "POST",
+        "headers": {
+          "X-Phantex-Api-Key": "{{.CREDENTIAL.phantex_api_key}}",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "action": "isolate_agent",
+          "target_type": "agent",
+          "target_id": "{{.enrich_alert.body.agent_id}}",
+          "reason": "Tines auto-triage: trust={{.enrich_alert.body.agent_trust_score}}, severity={{.enrich_alert.body.severity}}"
+        }
+      },
+      "receives_events_from": [
+        {"agent": "Triage Decision", "channel": "critical_alert"},
+        {"agent": "Triage Decision", "channel": "low_trust"}
+      ]
+    },
+    {
+      "name": "Escalate Alert",
+      "type": "httpRequest",
+      "description": "Escalate for medium-trust agents",
+      "options": {
+        "url": "{{.RESOURCE.phantex_base_url}}/api/v1/soar/ext/actions",
+        "method": "POST",
+        "headers": {
+          "X-Phantex-Api-Key": "{{.CREDENTIAL.phantex_api_key}}",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "action": "escalate_alert",
+          "target_type": "alert",
+          "target_id": "{{.explode_alerts.id}}",
+          "reason": "Tines auto-triage: medium trust ({{.enrich_alert.body.agent_trust_score}}), needs manual review"
+        }
+      },
+      "receives_events_from": [
+        {"agent": "Triage Decision", "channel": "medium_trust"}
+      ]
+    },
+    {
+      "name": "Auto Acknowledge",
+      "type": "httpRequest",
+      "description": "Auto-acknowledge low-risk alerts",
+      "options": {
+        "url": "{{.RESOURCE.phantex_base_url}}/api/v1/soar/ext/actions",
+        "method": "POST",
+        "headers": {
+          "X-Phantex-Api-Key": "{{.CREDENTIAL.phantex_api_key}}",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "action": "acknowledge_alert",
+          "target_type": "alert",
+          "target_id": "{{.explode_alerts.id}}",
+          "reason": "Tines auto-triage: low risk, trust={{.enrich_alert.body.agent_trust_score}}"
+        }
+      },
+      "receives_events_from": [
+        {"agent": "Triage Decision", "channel": "low_risk"}
+      ]
+    },
+    {
+      "name": "Notify Slack",
+      "type": "httpRequest",
+      "description": "Post a summary to Slack for critical alerts and isolations",
+      "options": {
+        "url": "{{.RESOURCE.slack_webhook_url}}",
+        "method": "POST",
+        "headers": {"Content-Type": "application/json"},
+        "body": {
+          "text": ":rotating_light: *Phantex Alert* — {{.enrich_alert.body.severity | upcase}}\n*Host:* {{.enrich_alert.body.agent_hostname}}\n*Trust Score:* {{.enrich_alert.body.agent_trust_score}}\n*Rule:* {{.enrich_alert.body.rule_name}}\n*Action Taken:* Agent Isolated\n*ATLAS:* {{.enrich_alert.body.atlas_mapping | json}}"
+        }
+      },
+      "receives_events_from": ["Isolate Agent"]
+    }
+  ],
+  "resources": [
+    {
+      "name": "phantex_base_url",
+      "description": "Base URL of Phantex instance (e.g. https://phantex.corp.com)",
+      "value": "https://phantex.example.com"
+    },
+    {
+      "name": "slack_webhook_url",
+      "description": "Slack incoming webhook URL for notifications",
+      "value": ""
+    }
+  ],
+  "credentials": [
+    {
+      "name": "phantex_api_key",
+      "description": "Phantex SOAR API key (starts with phx_sk_)",
+      "type": "text"
+    }
+  ]
+}

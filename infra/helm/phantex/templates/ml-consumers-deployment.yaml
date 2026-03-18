@@ -1,0 +1,102 @@
+# Phantex ML Pipeline Consumers — Deployments
+# Four independent Kafka consumers: features, inference, baseline, content
+{{- $fullname := include "phantex.fullname" . -}}
+{{- $labels   := include "phantex.labels" . -}}
+{{- $sa       := include "phantex.serviceAccountName" . -}}
+
+{{- range $name, $spec := .Values.mlPipeline.consumers }}
+{{- if $spec.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-ml-{{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+    app.kubernetes.io/component: ml-{{ $name }}
+spec:
+  replicas: {{ $spec.replicas }}
+  selector:
+    matchLabels:
+      {{- include "phantex.selectorLabels" (dict "name" (printf "phantex-ml-%s" $name) "release" $.Release.Name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "phantex.selectorLabels" (dict "name" (printf "phantex-ml-%s" $name) "release" $.Release.Name) | nindent 8 }}
+        app.kubernetes.io/component: ml-{{ $name }}
+    spec:
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ $sa }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ml-{{ $name }}
+          image: {{ include "phantex.image" (dict "global" $.Values.global "image" $spec.image "appVersion" $.Chart.AppVersion) }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          command: {{ $spec.command | toJson }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: PHANTEX_ENVIRONMENT
+              value: {{ $.Values.backend.env.PHANTEX_ENVIRONMENT | default "production" | quote }}
+            - name: PHANTEX_ML_DEV_MODE
+              value: "false"
+            # ── Kafka ──
+            - name: PHANTEX_KAFKA_BOOTSTRAP
+              value: {{ $.Values.kafka.bootstrapServers | quote }}
+            # ── Redis ──
+            - name: PHANTEX_REDIS_URL
+              value: {{ $.Values.redis.url | default (printf "redis://%s:%v/0" $.Values.redis.host ($.Values.redis.port | default 6379)) | quote }}
+            {{- if $spec.needsDB }}
+            # ── PostgreSQL ──
+            - name: PHANTEX_DB_HOST
+              value: {{ $.Values.postgresql.host | quote }}
+            - name: PHANTEX_DB_PORT
+              value: {{ $.Values.postgresql.port | default 5432 | quote }}
+            - name: PHANTEX_DB_NAME
+              value: {{ $.Values.postgresql.database | quote }}
+            - name: PHANTEX_DB_USER
+              value: {{ $.Values.postgresql.username | quote }}
+            - name: PHANTEX_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.postgresql.existingSecret }}
+                  key: {{ $.Values.postgresql.existingSecretKey }}
+            {{- end }}
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import os; os.path.exists('/proc/1/status') or exit(1)"]
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            {{- toYaml $spec.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if $spec.modelVolume }}
+            - name: model-cache
+              mountPath: /models
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if $spec.modelVolume }}
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: {{ $fullname }}-ml-models
+        {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,42 @@
+╔═══════════════════════════════════════════════════════════════════╗
+║                     PHANTEX DEPLOYED                             ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+Chart:   {{ .Chart.Name }}-{{ .Chart.Version }}
+Release: {{ .Release.Name }}
+
+{{- if .Values.ingress.enabled }}
+
+Dashboard:  https://{{ .Values.ingress.host }}
+API:        https://{{ .Values.ingress.host }}/api/v1/health
+WebSocket:  wss://{{ .Values.ingress.host }}/ws
+{{- end }}
+
+Components:
+  ✓ Backend API        ({{ .Values.backend.replicas }} replicas)
+  ✓ Gateway gRPC       ({{ .Values.gateway.replicas }} replicas)
+  ✓ Storage Writer     ({{ .Values.storageWriter.replicas }} replicas)
+  ✓ Dashboard          ({{ .Values.dashboard.replicas }} replicas)
+{{- if .Values.sensor.enabled }}
+  ✓ Sensor DaemonSet   (all nodes)
+{{- end }}
+
+Post-install checklist:
+  1. Verify pods are running:
+     kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+
+  2. Check backend health:
+     kubectl exec deploy/{{ include "phantex.fullname" . }}-backend -- \
+       python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:{{ .Values.backend.port }}/healthz').read().decode())"
+
+  3. Check sensor rollout:
+     kubectl rollout status daemonset/{{ include "phantex.fullname" . }}-sensor
+
+{{- if not .Values.postgresql.host }}
+
+⚠  WARNING: postgresql.host is empty. Set it to your database endpoint.
+{{- end }}
+{{- if not .Values.kafka.bootstrapServers }}
+
+⚠  WARNING: kafka.bootstrapServers is empty. Set it to your Kafka brokers.
+{{- end }}

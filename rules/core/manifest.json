@@ -1,0 +1,226 @@
+[
+  {
+    "name": "high_tool_call_rate",
+    "file": "dos_protection.prl",
+    "severity": "high",
+    "attack_class": "dos",
+    "description": "Detects agents making >100 tool calls in 60s (runaway agent or DoS)"
+  },
+  {
+    "name": "suspicious_network_dest",
+    "file": "suspicious_network_dest.prl",
+    "severity": "high",
+    "attack_class": "exfiltration",
+    "description": "Detects network connections to non-private IP addresses"
+  },
+  {
+    "name": "prompt_injection_pattern",
+    "file": "prompt_injection.prl",
+    "severity": "critical",
+    "attack_class": "prompt_injection",
+    "description": "Detects known prompt injection patterns in tool call arguments"
+  },
+  {
+    "name": "excessive_file_read",
+    "file": "excessive_file_read.prl",
+    "severity": "medium",
+    "attack_class": "exfiltration",
+    "description": "Detects agents reading >50 files in 60s (bulk file scanning)"
+  },
+  {
+    "name": "credential_in_output",
+    "file": "credential_theft.prl",
+    "severity": "critical",
+    "attack_class": "credential_theft",
+    "description": "Detects API keys, tokens, and private keys in tool call arguments"
+  },
+  {
+    "name": "unknown_mcp_server",
+    "file": "mcp_supply_chain.prl",
+    "severity": "high",
+    "attack_class": "supply_chain",
+    "description": "Detects MCP tool calls to servers with code execution capabilities"
+  },
+  {
+    "name": "unusual_process_spawn",
+    "file": "lateral_movement.prl",
+    "severity": "high",
+    "attack_class": "lateral_movement",
+    "description": "Detects spawning of shells, reverse shells, or attack tools"
+  },
+  {
+    "name": "large_outbound_transfer",
+    "file": "large_outbound_transfer.prl",
+    "severity": "high",
+    "attack_class": "exfiltration",
+    "description": "Detects >200 outbound network connections in 5 minutes"
+  },
+  {
+    "name": "new_network_connection",
+    "file": "new_network_connection.prl",
+    "severity": "medium",
+    "attack_class": "behavioral_anomaly",
+    "description": "Detects DNS lookups for suspicious C2/tunneling/paste domains"
+  },
+  {
+    "name": "sensitive_file_access",
+    "file": "sensitive_file_access.prl",
+    "severity": "high",
+    "attack_class": "unauthorized_access",
+    "description": "Detects file opens on passwords, private keys, and credential files"
+  },
+  {
+    "name": "trust_score_critical_drop",
+    "file": "trust_violations.prl",
+    "severity": "critical",
+    "attack_class": "trust_degradation",
+    "description": "Fires when agent trust score drops below 0.3 (sustained malicious behaviour)"
+  },
+  {
+    "name": "trust_score_low_warning",
+    "file": "trust_low_warning.prl",
+    "severity": "medium",
+    "attack_class": "trust_degradation",
+    "description": "Early-warning when agent trust score drops below 0.5 but above 0.3"
+  },
+  {
+    "name": "adaptive_trust_threshold",
+    "file": "adaptive_thresholds.prl",
+    "severity": "high",
+    "attack_class": "trust_degradation",
+    "description": "Combined ML anomaly + trust degradation detection for slow-burn attacks"
+  },
+  {
+    "name": "trust_permission_escalation",
+    "file": "trust_permission_escalation.prl",
+    "severity": "high",
+    "attack_class": "privilege_escalation",
+    "description": "Low-trust agent attempting permission escalation"
+  },
+  {
+    "name": "a2a_deep_delegation_chain",
+    "file": "a2a_delegation.prl",
+    "severity": "high",
+    "attack_class": "delegation_abuse",
+    "description": "A2A delegation chain exceeds safe depth (>5)"
+  },
+  {
+    "name": "a2a_circular_delegation",
+    "file": "a2a_delegation.prl",
+    "severity": "critical",
+    "attack_class": "delegation_abuse",
+    "description": "Circular delegation loop detected in A2A chain"
+  },
+  {
+    "name": "a2a_unverified_agent_delegation",
+    "file": "a2a_delegation.prl",
+    "severity": "high",
+    "attack_class": "impersonation",
+    "description": "Task delegated to unverified A2A agent"
+  },
+  {
+    "name": "a2a_sensitive_capability_delegation",
+    "file": "a2a_delegation.prl",
+    "severity": "medium",
+    "attack_class": "privilege_escalation",
+    "description": "Delegation requests sensitive capabilities"
+  },
+  {
+    "name": "a2a_revoked_agent_contact",
+    "file": "a2a_delegation.prl",
+    "severity": "critical",
+    "attack_class": "impersonation",
+    "description": "Communication with revoked A2A agent"
+  },
+  {
+    "name": "a2a_protocol_non_conformance",
+    "file": "a2a_delegation.prl",
+    "severity": "high",
+    "attack_class": "evasion",
+    "description": "A2A message fails protocol conformance check"
+  },
+  {
+    "name": "recording_downgrade_during_investigation",
+    "file": "audit_recording.prl",
+    "severity": "critical",
+    "attack_class": "audit_tampering",
+    "description": "Recording level downgraded during active investigation"
+  },
+  {
+    "name": "audit_chain_integrity_failure",
+    "file": "audit_recording.prl",
+    "severity": "critical",
+    "attack_class": "audit_tampering",
+    "description": "Tamper-proof audit chain integrity verification failed"
+  },
+  {
+    "name": "legal_hold_bypass_attempt",
+    "file": "audit_recording.prl",
+    "severity": "critical",
+    "attack_class": "audit_tampering",
+    "description": "Attempt to delete recordings under active legal hold"
+  },
+  {
+    "name": "mass_recording_disable",
+    "file": "audit_recording.prl",
+    "severity": "high",
+    "attack_class": "audit_evasion",
+    "description": "Bulk disable of recording on multiple agents"
+  },
+  {
+    "name": "cross_tenant_replay_attempt",
+    "file": "audit_recording.prl",
+    "severity": "critical",
+    "attack_class": "tenant_isolation",
+    "description": "Cross-tenant DVR replay access attempt"
+  },
+  {
+    "name": "export_without_verification",
+    "file": "audit_recording.prl",
+    "severity": "medium",
+    "attack_class": "compliance_gap",
+    "description": "Compliance export without recent chain verification"
+  },
+  {
+    "name": "mass_ioc_injection",
+    "file": "threat_intel.prl",
+    "severity": "high",
+    "attack_class": "threat_intel_abuse",
+    "description": "Mass IoC injection — >500 indicators added in 5 minutes"
+  },
+  {
+    "name": "unauthorized_feed_modification",
+    "file": "threat_intel.prl",
+    "severity": "high",
+    "attack_class": "threat_intel_abuse",
+    "description": "Feed configuration changed by non-admin user"
+  },
+  {
+    "name": "export_to_unknown_destination",
+    "file": "threat_intel.prl",
+    "severity": "medium",
+    "attack_class": "data_exfiltration",
+    "description": "IoC export pushed to a newly added destination within 5 minutes"
+  },
+  {
+    "name": "high_severity_correlation_burst",
+    "file": "threat_intel.prl",
+    "severity": "critical",
+    "attack_class": "active_attack",
+    "description": "Multiple critical/high severity IoC matches in short window"
+  },
+  {
+    "name": "stix_import_large_bundle",
+    "file": "threat_intel.prl",
+    "severity": "medium",
+    "attack_class": "threat_intel_abuse",
+    "description": "STIX bundle import with >1000 indicators"
+  },
+  {
+    "name": "cross_tenant_ioc_leak",
+    "file": "threat_intel.prl",
+    "severity": "critical",
+    "attack_class": "tenant_isolation",
+    "description": "Cross-tenant IoC access attempted"
+  }
+]

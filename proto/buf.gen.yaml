@@ -1,0 +1,20 @@
+# buf.gen.yaml — Code generation targets
+# Docs: https://buf.build/docs/configuration/v2/buf-gen-yaml
+version: v2
+
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/AKiileX/Phantex/proto/gen/go
+
+plugins:
+  # Go protobuf messages
+  - local: protoc-gen-go
+    out: gen/go
+    opt: paths=source_relative
+
+  # Go gRPC service stubs
+  - local: protoc-gen-go-grpc
+    out: gen/go
+    opt: paths=source_relative

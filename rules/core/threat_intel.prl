@@ -1,0 +1,68 @@
+## Phantex PRL — Threat Intelligence Rules (Phase 4, Block AH)
+##
+## 6 rules detecting abuse of threat intelligence features.
+
+# Rule: mass_ioc_injection
+# Category: Threat Intelligence
+# Severity: high
+# Attack Class: threat_intel_abuse
+#
+# Mass IoC injection — >500 indicators added in 5 minutes
+
+event.type == "THREAT_INTEL_IOC_ADD" AND count("THREAT_INTEL_IOC_ADD", "300s") > 500
+
+---
+
+# Rule: unauthorized_feed_modification
+# Category: Threat Intelligence
+# Severity: high
+# Attack Class: threat_intel_abuse
+#
+# Feed configuration changed by non-admin user
+
+event.type == "THREAT_INTEL_FEED_CHANGE" AND event.user_role != "admin"
+
+---
+
+# Rule: export_to_unknown_destination
+# Category: Threat Intelligence
+# Severity: medium
+# Attack Class: data_exfiltration
+#
+# IoC export pushed to a newly added destination
+
+event.type == "THREAT_INTEL_EXPORT" AND time_since("THREAT_INTEL_DEST_ADD") < "300s"
+
+---
+
+# Rule: high_severity_correlation_burst
+# Category: Threat Intelligence
+# Severity: critical
+# Attack Class: active_attack
+#
+# Multiple critical/high severity IoC matches in short window
+
+event.type == "THREAT_INTEL_CORRELATION_HIT" AND event.severity == "critical"
+AND count("THREAT_INTEL_CORRELATION_HIT", "60s") > 5
+
+---
+
+# Rule: stix_import_large_bundle
+# Category: Threat Intelligence
+# Severity: medium
+# Attack Class: threat_intel_abuse
+#
+# STIX bundle import with >1000 indicators
+
+event.type == "THREAT_INTEL_STIX_IMPORT" AND event.imported_count > 1000
+
+---
+
+# Rule: cross_tenant_ioc_leak
+# Category: Threat Intelligence
+# Severity: critical
+# Attack Class: tenant_isolation
+#
+# Cross-tenant IoC access attempted
+
+event.type == "THREAT_INTEL_CORRELATE" AND event.indicator_tenant_id != event.tenant_id

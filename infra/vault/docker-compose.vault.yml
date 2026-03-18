@@ -1,0 +1,29 @@
+# Phantex — HashiCorp Vault (dev mode)
+#
+# Usage:
+#   docker compose -f infra/vault/docker-compose.vault.yml up -d
+#
+# Root token: phantex-dev-root-token (dev mode only)
+# UI: http://localhost:8200/ui
+#
+# After startup, run setup.sh to initialize secrets and policies.
+
+services:
+  vault:
+    image: hashicorp/vault:1.17
+    container_name: phantex-vault
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: phantex-dev-root-token
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+      VAULT_ADDR: "http://127.0.0.1:8200"
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s

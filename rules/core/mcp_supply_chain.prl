@@ -1,0 +1,22 @@
+# Rule: unknown_mcp_server
+# Category: MCP Supply Chain
+# Severity: high
+# Attack Class: supply_chain
+#
+# Detects tool calls using the MCP (Model Context Protocol) where the
+# tool name is NOT in the approved per-environment allowlist.
+# MCP servers can execute arbitrary code, read files, and make network
+# calls — a compromised or rogue MCP server is a critical risk.
+#
+# The allowlist "approved_mcp_tools" is configured at engine startup.
+# If the allowlist is empty/unconfigured, the allowlist check is a no-op
+# and only the heuristic regex decides.
+#
+# Two-layer defence:
+#   1. Always: require tool name matching code-execution patterns
+#   2. If allowlist exists: also exclude explicitly approved tools
+
+event.type == "TOOL_CALL"
+AND event.raw_data.protocol == "mcp"
+AND regex_match("(?i)(exec|shell|bash|cmd|system|eval|subprocess|os\\.run|command|execute|terminal|run_code|code_interpreter)", event.raw_data.tool_name)
+AND NOT in_allowlist(event.raw_data.tool_name, "approved_mcp_tools")

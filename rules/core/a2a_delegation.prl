@@ -1,0 +1,82 @@
+# Rule: a2a_deep_delegation_chain
+# Category: A2A Delegation
+# Severity: high
+# Attack Class: delegation_abuse
+#
+# Detects agent-to-agent task delegation chains exceeding the
+# safe depth threshold (5).  Deep chains can be used to launder
+# intent, evade attribution, or overwhelm monitoring.
+
+event.type == "A2A_DELEGATION"
+AND event.raw_data.chain_depth > 5
+AND NOT in_allowlist(event.raw_data.source_agent, "trusted_orchestrators")
+
+---
+
+# Rule: a2a_circular_delegation
+# Category: A2A Delegation
+# Severity: critical
+# Attack Class: delegation_abuse
+#
+# Fires when an A2A delegation request is sent to an agent that
+# already appears earlier in the same delegation chain — indicating
+# a loop that can cause infinite recursion and resource exhaustion.
+
+event.type == "A2A_DELEGATION"
+AND event.raw_data.cycle_detected == true
+
+---
+
+# Rule: a2a_unverified_agent_delegation
+# Category: A2A Delegation
+# Severity: high
+# Attack Class: impersonation
+#
+# Blocks or alerts when a task is delegated to an agent whose
+# Agent Card has NOT been verified by a Phantex administrator.
+# Unverified cards may belong to attacker-deployed agents.
+
+event.type == "A2A_DELEGATION"
+AND event.raw_data.target_card_status != "verified"
+
+---
+
+# Rule: a2a_sensitive_capability_delegation
+# Category: A2A Delegation
+# Severity: medium
+# Attack Class: privilege_escalation
+#
+# Flags delegations that request sensitive capabilities
+# (code execution, network access, file system writes)
+# to ensure proper authorisation is in place.
+
+event.type == "A2A_DELEGATION"
+AND regex_match("(?i)(code_execution|network|file_write|shell|database|credential|admin|system)", event.raw_data.capability)
+
+---
+
+# Rule: a2a_revoked_agent_contact
+# Category: A2A Delegation
+# Severity: critical
+# Attack Class: impersonation
+#
+# Fires when any A2A communication (delegation, response, or
+# heartbeat) involves an agent whose card has been revoked.
+# Revoked agents must be fully isolated.
+
+event.type IN ["A2A_DELEGATION", "A2A_RESPONSE", "A2A_HEARTBEAT"]
+AND (event.raw_data.source_card_status == "revoked" OR event.raw_data.target_card_status == "revoked")
+
+---
+
+# Rule: a2a_protocol_non_conformance
+# Category: A2A Protocol Integrity
+# Severity: high
+# Attack Class: evasion
+#
+# Flags A2A messages that score below the conformance threshold
+# in the Protocol Fingerprinter.  Non-conformant messages may
+# indicate a custom / attacker-modified agent implementation.
+
+event.type IN ["A2A_DELEGATION", "A2A_RESPONSE", "A2A_CARD_REGISTER"]
+AND event.raw_data.conformance_score < 0.6

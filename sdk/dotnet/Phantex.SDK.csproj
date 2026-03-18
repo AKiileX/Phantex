@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Phantex.SDK</RootNamespace>
+    <PackageId>Phantex.SDK</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Phantex</Authors>
+    <Description>Phantex runtime security SDK — instrument AI agent frameworks for .NET</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageTags>security;ai-agents;semantic-kernel;mlnet;instrumentation</PackageTags>
+    <RepositoryUrl>https://github.com/AKiileX/Phantex</RepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Grpc.Net.Client" Version="2.62.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.27.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.62.0" PrivateAssets="All" />
+    <PackageReference Include="xunit" Version="2.9.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.0" />
+  </ItemGroup>
+
+</Project>

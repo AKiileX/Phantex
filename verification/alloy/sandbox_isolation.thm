@@ -1,0 +1,15 @@
+// ============================================================
+// Alloy Theme / Configuration for sandbox_isolation.als
+//
+// This file configures the Alloy Analyzer to check all assertions
+// with the specified scope.  Used by the CLI runner:
+//   java -cp alloy.jar edu.mit.csail.sdg.alloy4whole.ExampleUsingTheCompiler \
+//         sandbox_isolation.als
+//
+// Properties verified:
+//   1. ResourceContainment    — agents stay within allowlist
+//   2. QuarantineCapture      — quarantine logs everything
+//   3. NoLateralMovement      — no cross-sandbox resource access
+//   4. CrossTenantIsolation   — no cross-tenant resource access
+//   5. ToolMediationSafety    — tools respect sandbox boundaries
+// ============================================================

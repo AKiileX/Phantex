@@ -1,0 +1,7 @@
+[
+  { "version": "5.15.0",  "label": "5.15 LTS",      "url_suffix": "v5.15/bzImage-5.15" },
+  { "version": "6.1.0",   "label": "6.1 LTS",       "url_suffix": "v6.1/bzImage-6.1" },
+  { "version": "6.6.0",   "label": "6.6 LTS",       "url_suffix": "v6.6/bzImage-6.6" },
+  { "version": "6.8.0",   "label": "6.8 stable",     "url_suffix": "v6.8/bzImage-6.8" },
+  { "version": "6.12.0",  "label": "6.12 stable",    "url_suffix": "v6.12/bzImage-6.12" }
+]

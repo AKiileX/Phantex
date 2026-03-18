@@ -1,0 +1,71 @@
+# Phantex — Local Kafka Development Stack
+#
+# Usage:
+#   cd infra/kafka
+#   docker compose -f docker-compose.kafka.yml up -d
+#
+# This gives you:
+#   - Kafka broker on localhost:9092 (plaintext, dev only)
+#   - Kafka UI on http://localhost:8080 (browse topics/messages)
+#
+# Production uses KRaft mode (no Zookeeper) with SASL_SSL.
+# This dev setup uses KRaft (Kafka 3.7+ native consensus, no Zookeeper required).
+
+services:
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: phantex-kafka
+    hostname: kafka
+    ports:
+      - "127.0.0.1:9092:9092"     # External listener (host access — localhost only)
+      - "127.0.0.1:9093:9093"     # Controller listener (internal)
+    environment:
+      # KRaft mode (no Zookeeper)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # Listeners
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      # Cluster
+      KAFKA_CLUSTER_ID: phantex-dev-cluster-001
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+      # Performance (dev-friendly)
+      KAFKA_LOG_RETENTION_HOURS: 168      # 7 days
+      KAFKA_LOG_SEGMENT_BYTES: 104857600  # 100MB segments
+      KAFKA_NUM_PARTITIONS: 6             # default partitions for auto-created topics
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"  # explicit topic creation only
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: phantex-kafka-ui
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: phantex-dev
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  kafka-data:
+    name: phantex-kafka-data

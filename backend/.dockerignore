@@ -1,0 +1,24 @@
+# Ignore Python bytecode and local dev artifacts
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Test/dev files
+tests/
+_test_import.py
+.coverage
+htmlcov/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

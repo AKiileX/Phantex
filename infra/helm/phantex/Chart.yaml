@@ -1,0 +1,18 @@
+apiVersion: v2
+name: phantex
+description: Phantex — Runtime security platform for AI agents
+type: application
+version: 0.2.0
+appVersion: "0.2.0"
+kubeVersion: ">=1.27.0-0"
+home: https://github.com/AKiileX/Phantex
+sources:
+  - https://github.com/AKiileX/Phantex
+keywords:
+  - security
+  - ai-agents
+  - ebpf
+  - runtime-protection
+maintainers:
+  - name: Phantex Team
+    email: starxsec@proton.me

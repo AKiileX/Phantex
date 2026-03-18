@@ -1,0 +1,94 @@
+# Phantex Sensor — nfpm packaging configuration
+#
+# Builds .deb and .rpm packages using nfpm (https://nfpm.goreleaser.com).
+#
+# Usage:
+#   # Build the Go binary first
+#   cd sensor && make build
+#
+#   # Then package
+#   nfpm package --packager deb --target .
+#   nfpm package --packager rpm --target .
+#
+# Install:
+#   sudo dpkg -i phantex-sensor_*.deb
+#   sudo rpm -i phantex-sensor-*.rpm
+
+name: phantex-sensor
+arch: amd64
+platform: linux
+version: ${VERSION:-0.1.0}
+maintainer: Phantex Team <starxsec@proton.me>
+description: |
+  Phantex AI Agent Sensor — eBPF-based runtime security monitoring
+  for AI agents. Captures process execution, file access, network
+  connections, and memory operations at the kernel level.
+vendor: Phantex Inc.
+homepage: https://github.com/AKiileX/Phantex
+license: Apache-2.0
+
+# ── Files ─────────────────────────────────────────────────────────────────────
+contents:
+  # Binary
+  - src: ./phantex-sensor
+    dst: /usr/local/bin/phantex-sensor
+    file_info:
+      mode: 0755
+
+  # Systemd unit
+  - src: ./phantex-sensor.service
+    dst: /etc/systemd/system/phantex-sensor.service
+    file_info:
+      mode: 0644
+
+  # Default config (placeholder — customer overrides)
+  - src: ./sensor.yaml.example
+    dst: /etc/phantex/sensor.yaml
+    type: config|noreplace
+    file_info:
+      mode: 0640
+      owner: root
+      group: root
+
+  # Log directory
+  - dst: /var/log/phantex
+    type: dir
+    file_info:
+      mode: 0755
+
+  # Runtime directory (Unix socket, PID file)
+  - dst: /var/run/phantex
+    type: dir
+    file_info:
+      mode: 0755
+
+# ── Scripts ───────────────────────────────────────────────────────────────────
+scripts:
+  postinstall: |
+    #!/bin/sh
+    set -e
+    systemctl daemon-reload
+    systemctl enable phantex-sensor.service
+    echo "Phantex sensor installed. Start with: sudo systemctl start phantex-sensor"
+
+  preremove: |
+    #!/bin/sh
+    set -e
+    systemctl stop phantex-sensor.service 2>/dev/null || true
+    systemctl disable phantex-sensor.service 2>/dev/null || true
+
+  postremove: |
+    #!/bin/sh
+    systemctl daemon-reload
+
+# ── Dependencies ──────────────────────────────────────────────────────────────
+depends:
+  # Kernel 5.15+ required for BTF + eBPF features
+  # No userspace library deps — static binary
+  []
+
+overrides:
+  deb:
+    depends: []
+  rpm:
+    depends: []

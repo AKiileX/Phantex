@@ -1,0 +1,13 @@
+# Rule: large_outbound_transfer
+# Category: Data Exfiltration
+# Severity: high
+# Attack Class: exfiltration
+#
+# Detects excessive outbound network activity within a 5-minute window.
+# A high volume of outbound connections from the same agent may indicate
+# bulk data exfiltration via many small transfers.
+#
+# Threshold: more than 200 outbound connections in 5 minutes.
+# In Phase 2, a bytes_sum() function will allow byte-level thresholds.
+
+event.type == "NETWORK_CONNECT" AND count("NETWORK_CONNECT", "5m") > 200

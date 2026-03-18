@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025-2026 The Phantex Authors
+
+# Default owner for everything
+*                       @AKiileX
+
+# Component owners (can be expanded as contributors join)
+/sensor/                @AKiileX
+/gateway/               @AKiileX
+/backend/               @AKiileX
+/dashboard/             @AKiileX
+/trust-engine/          @AKiileX
+/cli/                   @AKiileX
+/sdk/                   @AKiileX
+/infra/                 @AKiileX
+/proto/                 @AKiileX
+/.github/               @AKiileX

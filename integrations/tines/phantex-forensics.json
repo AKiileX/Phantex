@@ -1,0 +1,68 @@
+{
+  "name": "Phantex EDR — Forensics Collection",
+  "description": "Tines story for on-demand forensics collection from a Phantex-managed agent. Triggered manually or by a parent story.",
+  "version": "1.0.0",
+  "agents": [
+    {
+      "name": "Receive Trigger",
+      "type": "webhook",
+      "description": "Receives agent_id and reason for forensics collection",
+      "options": {
+        "path": "phantex-forensics",
+        "secret": "{{.CREDENTIAL.webhook_secret}}"
+      }
+    },
+    {
+      "name": "Collect Forensics",
+      "type": "httpRequest",
+      "description": "Dispatch forensics collection command to the agent",
+      "options": {
+        "url": "{{.RESOURCE.phantex_base_url}}/api/v1/soar/ext/actions",
+        "method": "POST",
+        "headers": {
+          "X-Phantex-Api-Key": "{{.CREDENTIAL.phantex_api_key}}",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "action": "collect_forensics",
+          "target_type": "agent",
+          "target_id": "{{.receive_trigger.body.agent_id}}",
+          "reason": "{{.receive_trigger.body.reason | default: 'On-demand forensics via Tines'}}",
+          "params": {}
+        }
+      },
+      "receives_events_from": ["Receive Trigger"]
+    },
+    {
+      "name": "Log Result",
+      "type": "eventTransformation",
+      "description": "Format the collection result for logging",
+      "options": {
+        "mode": "message_only",
+        "payload": {
+          "agent_id": "{{.receive_trigger.body.agent_id}}",
+          "action_id": "{{.collect_forensics.body.id}}",
+          "result": "{{.collect_forensics.body.result}}",
+          "timestamp": "{{.NOW}}"
+        }
+      },
+      "receives_events_from": ["Collect Forensics"]
+    }
+  ],
+  "resources": [
+    {
+      "name": "phantex_base_url",
+      "value": "https://phantex.example.com"
+    }
+  ],
+  "credentials": [
+    {
+      "name": "phantex_api_key",
+      "type": "text"
+    },
+    {
+      "name": "webhook_secret",
+      "type": "text"
+    }
+  ]
+}

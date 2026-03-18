@@ -1,0 +1,30 @@
+# Neo4j standalone compose for development/testing.
+# Normally Neo4j is started via the main docker-compose.dev.yml.
+
+services:
+  neo4j:
+    image: neo4j:5.17-community
+    container_name: phantex-neo4j
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7474:7474"   # HTTP browser
+      - "127.0.0.1:7687:7687"   # Bolt protocol
+    volumes:
+      - phantex-neo4j-data:/data
+      - ./schema:/var/lib/neo4j/import:ro
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-phantex-dev-password}
+      NEO4J_PLUGINS: '[]'
+      NEO4J_server_memory_heap_initial__size: "256m"
+      NEO4J_server_memory_heap_max__size: "512m"
+      NEO4J_server_memory_pagecache_size: "128m"
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p ${NEO4J_PASSWORD:-phantex-dev-password} 'RETURN 1'"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  phantex-neo4j-data:
+    name: phantex-neo4j-data

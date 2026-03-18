@@ -1,0 +1,130 @@
+# ============================================================================
+# Phantex — Deploy to Staging
+# Auto-triggers on successful CI run on main branch.
+# ============================================================================
+name: Deploy Staging
+
+on:
+  # workflow_run:            # disabled — no staging cluster yet
+  #   workflows: ["CI"]
+  #   types: [completed]
+  #   branches: [main]
+  workflow_dispatch:          # manual trigger
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/phantex
+  HELM_RELEASE: phantex-staging
+  KUBE_NAMESPACE: phantex-staging
+
+permissions:
+  contents: read
+  packages: read
+  id-token: write   # OIDC for cloud auth
+
+jobs:
+  deploy:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    environment:
+      name: staging
+      # TODO: Set your staging domain in repository secrets or variables
+      url: https://${{ vars.STAGING_DOMAIN || 'staging.example.com' }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set image tag
+        id: tag
+        run: echo "sha=$(echo ${{ github.event.workflow_run.head_sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      # ── Cloud Auth (OIDC — no long-lived secrets) ──────────────
+      # Uncomment the appropriate provider:
+      #
+      # AWS EKS:
+      # - uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+      #     aws-region: us-east-1
+      # - run: aws eks update-kubeconfig --name phantex-staging
+      #
+      # GKE:
+      # - uses: google-github-actions/auth@v2
+      #   with:
+      #     workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+      #     service_account: ${{ secrets.GCP_SA_EMAIL }}
+      # - uses: google-github-actions/get-gke-credentials@v2
+      #   with:
+      #     cluster_name: phantex-staging
+      #     location: us-central1
+      #
+      # Azure AKS:
+      # - uses: azure/login@v2
+      #   with:
+      #     client-id: ${{ secrets.AZURE_CLIENT_ID }}
+      #     tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+      #     subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      # - uses: azure/aks-set-context@v4
+      #   with:
+      #     resource-group: phantex-staging
+      #     cluster-name: phantex-staging
+
+      - name: Install Helm
+        uses: azure/setup-helm@fe7b79cd5ee1e45176fcad797de68ecaf3ca4814 # v4.2.0
+        with:
+          version: v3.16.0
+
+      - name: Log in to GHCR (for Helm to pull OCI charts if needed)
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install ${{ env.HELM_RELEASE }} \
+            ./infra/helm/phantex \
+            --namespace ${{ env.KUBE_NAMESPACE }} \
+            --create-namespace \
+            --set global.image.tag=${{ steps.tag.outputs.sha }} \
+            --set global.image.registry=${{ env.REGISTRY }} \
+            --set ingress.enabled=true \
+            --set ingress.host=${{ vars.STAGING_DOMAIN || 'staging.example.com' }} \  # Set in repo variables
+            --set ingress.tls.enabled=true \
+            --set ingress.tls.secretName=phantex-staging-tls \
+            --values infra/helm/phantex/values.yaml \
+            --wait \
+            --timeout 5m
+
+      - name: Verify deployment
+        run: |
+          kubectl -n ${{ env.KUBE_NAMESPACE }} rollout status deployment/${{ env.HELM_RELEASE }}-backend --timeout=3m
+          kubectl -n ${{ env.KUBE_NAMESPACE }} rollout status deployment/${{ env.HELM_RELEASE }}-gateway --timeout=3m
+          kubectl -n ${{ env.KUBE_NAMESPACE }} rollout status deployment/${{ env.HELM_RELEASE }}-dashboard --timeout=3m
+
+      - name: Smoke test
+        run: |
+          # Wait for ingress to propagate
+          sleep 15
+          # Health check
+          curl -sf https://${{ vars.STAGING_DOMAIN || 'staging.example.com' }}/api/v1/health || {  # Set domain in repo variables
+            echo "Smoke test failed — rolling back"
+            helm rollback ${{ env.HELM_RELEASE }} --namespace ${{ env.KUBE_NAMESPACE }}
+            exit 1
+          }
+
+      - name: Post failure — collect logs
+        if: failure()
+        run: |
+          echo "=== Pod status ==="
+          kubectl -n ${{ env.KUBE_NAMESPACE }} get pods
+          echo "=== Events ==="
+          kubectl -n ${{ env.KUBE_NAMESPACE }} get events --sort-by='.lastTimestamp' | tail -30
+          echo "=== Backend logs ==="
+          kubectl -n ${{ env.KUBE_NAMESPACE }} logs -l app.kubernetes.io/component=backend --tail=100
+          echo "=== Gateway logs ==="
+          kubectl -n ${{ env.KUBE_NAMESPACE }} logs -l app.kubernetes.io/component=gateway --tail=100

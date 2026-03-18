@@ -1,0 +1,543 @@
+@import "tailwindcss";
+
+/*
+ * Phantex Dashboard — Premium Dark Theme
+ *
+ * Linear / Vercel / Raycast-inspired dark mode.
+ * Subtle dot-grid · frosted glass cards · gradient accents ·
+ * smooth micro-interactions · refined typography.
+ */
+
+@theme {
+  /* ── Surface elevation system ──────────────────────────── */
+  --color-background: #09090b;
+  --color-foreground: #fafafa;
+  --color-card: rgba(24, 24, 27, 0.8);
+  --color-card-foreground: #fafafa;
+  --color-popover: #18181b;
+  --color-popover-foreground: #fafafa;
+
+  --color-surface-0: #09090b;
+  --color-surface-1: #18181b;
+  --color-surface-2: #27272a;
+  --color-surface-3: #3f3f46;
+
+  /* ── Brand — Emerald accent ────────────────────────────── */
+  --color-primary: #10b981;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #27272a;
+  --color-secondary-foreground: #a1a1aa;
+  --color-accent: #059669;
+  --color-accent-foreground: #ffffff;
+
+  /* ── Muted / subtle ────────────────────────────────────── */
+  --color-muted: #27272a;
+  --color-muted-foreground: #71717a;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+
+  /* ── Borders + inputs ──────────────────────────────────── */
+  --color-border: rgba(63, 63, 70, 0.5);
+  --color-input: #27272a;
+  --color-ring: #10b981;
+
+  /* ── Sidebar ───────────────────────────────────────────── */
+  --color-sidebar: #0a0a0c;
+  --color-sidebar-foreground: #71717a;
+  --color-sidebar-accent: #18181b;
+
+  /* ── Severity (industry standard) ──────────────────────── */
+  --color-severity-critical: #ef4444;
+  --color-severity-high: #f97316;
+  --color-severity-medium: #eab308;
+  --color-severity-low: #3b82f6;
+  --color-severity-info: #71717a;
+
+  /* ── Status ────────────────────────────────────────────── */
+  --color-status-active: #22c55e;
+  --color-status-stale: #eab308;
+  --color-status-terminated: #71717a;
+
+  /* ── Theme-aware overlays (white-on-dark, black-on-light) ── */
+  --color-overlay-subtle: rgba(255, 255, 255, 0.02);
+  --color-overlay-hover: rgba(255, 255, 255, 0.04);
+  --color-overlay-active: rgba(255, 255, 255, 0.08);
+  --color-overlay-muted: rgba(255, 255, 255, 0.03);
+  --color-overlay-strong: rgba(255, 255, 255, 0.10);
+  --color-overlay-backdrop: rgba(0, 0, 0, 0.60);
+
+  /* ── Canvas/SVG adaptive colors ────────────────────────── */
+  --color-canvas-text: rgba(250, 250, 250, 0.85);
+  --color-canvas-text-muted: rgba(250, 250, 250, 0.5);
+  --color-canvas-grid: rgba(63, 63, 70, 0.25);
+  --color-canvas-grid-subtle: rgba(63, 63, 70, 0.15);
+  --color-canvas-node-inactive: rgba(63, 63, 70, 0.3);
+
+  /* ── Radii — rounder for modern feel ───────────────────── */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* ── Fonts ─────────────────────────────────────────────── */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+ * Light mode overrides — applied when <html class="light">
+ * ═══════════════════════════════════════════════════════════════ */
+.light {
+  --color-background: #fafafa;
+  --color-foreground: #09090b;
+  --color-card: rgba(255, 255, 255, 0.85);
+  --color-card-foreground: #09090b;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #09090b;
+
+  --color-surface-0: #fafafa;
+  --color-surface-1: #f4f4f5;
+  --color-surface-2: #e4e4e7;
+  --color-surface-3: #d4d4d8;
+
+  --color-primary: #059669;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f4f4f5;
+  --color-secondary-foreground: #52525b;
+  --color-accent: #10b981;
+  --color-accent-foreground: #ffffff;
+
+  --color-muted: #f4f4f5;
+  --color-muted-foreground: #71717a;
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-input: #f4f4f5;
+  --color-ring: #059669;
+
+  --color-sidebar: #f8f8fa;
+  --color-sidebar-foreground: #71717a;
+  --color-sidebar-accent: #f0f0f2;
+
+  --color-severity-critical: #dc2626;
+  --color-severity-high: #ea580c;
+  --color-severity-medium: #ca8a04;
+  --color-severity-low: #2563eb;
+  --color-severity-info: #71717a;
+
+  --color-status-active: #16a34a;
+  --color-status-stale: #ca8a04;
+  --color-status-terminated: #71717a;
+
+  /* ── Theme-aware overlays (black-on-light) ────────────── */
+  --color-overlay-subtle: rgba(0, 0, 0, 0.025);
+  --color-overlay-hover: rgba(0, 0, 0, 0.04);
+  --color-overlay-active: rgba(0, 0, 0, 0.07);
+  --color-overlay-muted: rgba(0, 0, 0, 0.03);
+  --color-overlay-strong: rgba(0, 0, 0, 0.10);
+  --color-overlay-backdrop: rgba(0, 0, 0, 0.40);
+
+  /* ── Canvas/SVG adaptive colors ────────────────────────── */
+  --color-canvas-text: rgba(9, 9, 11, 0.85);
+  --color-canvas-text-muted: rgba(9, 9, 11, 0.45);
+  --color-canvas-grid: rgba(0, 0, 0, 0.12);
+  --color-canvas-grid-subtle: rgba(0, 0, 0, 0.07);
+  --color-canvas-node-inactive: rgba(0, 0, 0, 0.15);
+}
+
+/* ── Base resets ───────────────────────────────────────────── */
+* {
+  border-color: var(--color-border);
+}
+
+html {
+  color-scheme: dark;
+}
+html.light {
+  color-scheme: light;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+ * Readability — global font-size scale-up.
+ *
+ * The dashboard used many text-[7px]…text-[11px] arbitrary pixel
+ * sizes and text-xs (12px) / text-sm (14px) Tailwind utilities
+ * that are too small to read comfortably on standard monitors.
+ *
+ * We intercept at the CSS level — overriding the generated
+ * utility classes to bump each size by +2–3 px.
+ * ═══════════════════════════════════════════════════════════════ */
+
+/* Arbitrary pixel sizes → larger readable equivalents */
+.text-\[7px\]  { font-size: 12px !important; }
+.text-\[8px\]  { font-size: 13px !important; }
+.text-\[9px\]  { font-size: 14px !important; }
+.text-\[10px\] { font-size: 15px !important; }
+.text-\[11px\] { font-size: 16px !important; }
+
+/* Standard Tailwind sizes — scale up for comfortable reading */
+.text-xs  { font-size: 0.875rem !important; line-height: 1.25rem !important; }    /* 14px (was 12) */
+.text-sm  { font-size: 1rem !important; line-height: 1.5rem !important; }          /* 16px (was 14) */
+.text-base { font-size: 1.0625rem !important; line-height: 1.625rem !important; } /* 17px (was 16) */
+
+/* ── Dot grid background (Linear-style) ────────────────────── */
+.dot-grid {
+  background-image: radial-gradient(circle, rgba(161, 161, 170, 0.12) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.light .dot-grid {
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.06) 1px, transparent 1px);
+}
+
+/* ── Radar sweep overlay is now rendered via React in MainLayout ── */
+
+/* ── Surface utility classes ───────────────────────────────── */
+.surface-0 { background-color: var(--color-surface-0); }
+.surface-1 { background-color: var(--color-surface-1); }
+.surface-2 { background-color: var(--color-surface-2); }
+.surface-3 { background-color: var(--color-surface-3); }
+
+/* ── Metric value typography ───────────────────────────────── */
+.metric-value {
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--color-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted-foreground);
+}
+
+/* ── Status dot indicator ──────────────────────────────────── */
+.status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot-active { background-color: var(--color-status-active); }
+.status-dot-stale { background-color: var(--color-status-stale); }
+.status-dot-terminated { background-color: var(--color-status-terminated); }
+.status-dot-critical { background-color: var(--color-severity-critical); }
+.status-dot-high { background-color: var(--color-severity-high); }
+.status-dot-medium { background-color: var(--color-severity-medium); }
+.status-dot-low { background-color: var(--color-severity-low); }
+
+/* ── Gradient border accent (for hero cards) ───────────────── */
+.gradient-border-top {
+  position: relative;
+}
+.gradient-border-top::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-primary), transparent);
+  opacity: 0.5;
+  border-radius: inherit;
+}
+
+/* ── Glow effects (subtle) ─────────────────────────────────── */
+.glow-sm {
+  box-shadow: 0 0 15px -3px rgba(16, 185, 129, 0.1);
+}
+
+/* ── Smooth animations ─────────────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-up-stagger {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes count-up {
+  from { opacity: 0; transform: translateY(6px); filter: blur(4px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0px); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-count-up {
+  animation: count-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ── Staggered card entrance ───────────────────────────────── */
+.stagger-1 { animation: slide-up-stagger 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.0s both; }
+.stagger-2 { animation: slide-up-stagger 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both; }
+.stagger-3 { animation: slide-up-stagger 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.10s both; }
+.stagger-4 { animation: slide-up-stagger 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both; }
+.stagger-5 { animation: slide-up-stagger 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.20s both; }
+
+/* ── Shimmer loading skeleton ──────────────────────────────── */
+.shimmer {
+  background: linear-gradient(90deg, var(--color-surface-1) 25%, var(--color-surface-2) 50%, var(--color-surface-1) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* ── Radar sweep (login page only) ─────────────────────────── */
+@keyframes radar-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes radar-blip {
+  0%, 100% { opacity: 0; transform: scale(0.3); }
+  15%, 40% { opacity: 1; transform: scale(1); }
+}
+
+/* ── Scrollbar — refined ───────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(63, 63, 70, 0.5);
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(63, 63, 70, 0.8);
+}
+
+.light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+}
+.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* ── Selection ─────────────────────────────────────────────── */
+::selection {
+  background: rgba(16, 185, 129, 0.25);
+  color: #ffffff;
+}
+.light ::selection {
+  background: rgba(5, 150, 105, 0.2);
+  color: #09090b;
+}
+
+/* ── Sidebar active indicator — animated gradient border ───── */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes active-shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.nav-active-indicator {
+  position: absolute;
+  left: 0;
+  top: 15%;
+  bottom: 15%;
+  width: 2.5px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(180deg, transparent, var(--color-primary), transparent);
+  background-size: 100% 200%;
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* Sidebar nav hover glow */
+.nav-glow-hover {
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+.nav-glow-hover:hover {
+  box-shadow: 0 0 12px -3px rgba(16, 185, 129, 0.12), inset 0 0 12px -6px rgba(16, 185, 129, 0.06);
+}
+.light .nav-glow-hover:hover {
+  box-shadow: 0 0 12px -3px rgba(5, 150, 105, 0.1), inset 0 0 12px -6px rgba(5, 150, 105, 0.04);
+}
+
+/* Active nav item glow */
+.nav-active-glow {
+  box-shadow: 0 0 20px -4px rgba(16, 185, 129, 0.15), inset 0 0 16px -6px rgba(16, 185, 129, 0.08);
+}
+.light .nav-active-glow {
+  box-shadow: 0 0 16px -4px rgba(5, 150, 105, 0.12), inset 0 0 12px -6px rgba(5, 150, 105, 0.06);
+}
+
+/* ── Critical banner glow & pulse ──────────────────────────── */
+@keyframes banner-pulse {
+  0%, 100% { box-shadow: inset 0 0 20px -6px rgba(239, 68, 68, 0.1); }
+  50% { box-shadow: inset 0 0 30px -4px rgba(239, 68, 68, 0.2); }
+}
+
+.critical-banner {
+  animation: banner-pulse 3s ease-in-out infinite;
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.08) 0%, rgba(239, 68, 68, 0.12) 50%, rgba(239, 68, 68, 0.08) 100%);
+  background-size: 200% 100%;
+}
+
+/* ── Logout button glow-on-hover ───────────────────────────── */
+.logout-btn:hover {
+  box-shadow: 0 0 16px -4px rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.08) !important;
+  color: #ef4444 !important;
+}
+
+/* ── User card glassmorphism ───────────────────────────────── */
+.glass-user-card {
+  background: rgba(24, 24, 27, 0.92);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.light .glass-user-card {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* ── Sidebar mesh gradient background ──────────────────────── */
+.sidebar-mesh {
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(16, 185, 129, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(16, 185, 129, 0.02) 0%, transparent 50%);
+}
+.light .sidebar-mesh {
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(5, 150, 105, 0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(5, 150, 105, 0.02) 0%, transparent 50%);
+}
+
+/* ── Legacy class stubs (prevent broken references) ────────── */
+.glass { background-color: var(--color-surface-1); border: 1px solid var(--color-border); }
+.glass-strong { background-color: var(--color-surface-1); border: 1px solid var(--color-border); }
+.glow-green { /* removed */ }
+.glow-critical { /* removed */ }
+.animate-float-in { animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* ── Copilot FAB subtle pulse ──────────────────────────────── */
+@keyframes pulse-subtle {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  50% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.12); }
+}
+.animate-pulse-subtle {
+  animation: pulse-subtle 3s ease-in-out infinite;
+}
+
+/* ── Copilot panel scrollbar ───────────────────────────────── */
+.scrollbar-thin::-webkit-scrollbar { width: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* ═══════════════════════════════════════════════════════════════
+ * Light mode — global bg-white/[alpha] fix.
+ *
+ * All components use bg-white/[0.02]-[0.08] for subtle overlays.
+ * In dark mode: white at 3 % on dark = subtle highlight. ✓
+ * In light mode: white at 3 % on white = INVISIBLE.      ✗
+ *
+ * Instead of editing 58+ source lines, we intercept at the CSS
+ * level: in .light, every white-alpha bg utility maps to
+ * an equivalent black-alpha value that is visible on white.
+ *
+ * Dark Reader resistance:
+ *   <meta name="darkreader-lock"> in index.html blocks it.
+ *   color-scheme: light on <html> tells browsers we handle it.
+ * ═══════════════════════════════════════════════════════════════ */
+.light {
+  /* --- bg-white/[alpha] → bg-black/[alpha] visual flip --- */
+  /* Tailwind arbitrary alpha on white generates:
+       background-color: color-mix(in srgb, #fff <alpha>%, transparent)
+     or raw rgba().  We override via Tailwind's class selector. */
+}
+
+/* Catch-all: any element whose background is white-with-alpha in light mode
+   gets remapped to black-with-alpha for visibility.
+   These selectors match the generated Tailwind arbitrary value classes. */
+.light [class*="bg-white\\/"] {
+  --tw-bg-opacity: 1;
+}
+.light .bg-white\\/\\[0\\.01\\] { background-color: rgba(0,0,0,0.015) !important; }
+.light .bg-white\\/\\[0\\.02\\] { background-color: rgba(0,0,0,0.025) !important; }
+.light .bg-white\\/\\[0\\.03\\] { background-color: rgba(0,0,0,0.035) !important; }
+.light .bg-white\\/\\[0\\.04\\] { background-color: rgba(0,0,0,0.05) !important; }
+.light .bg-white\\/\\[0\\.05\\] { background-color: rgba(0,0,0,0.06) !important; }
+.light .bg-white\\/\\[0\\.06\\] { background-color: rgba(0,0,0,0.07) !important; }
+.light .bg-white\\/\\[0\\.08\\] { background-color: rgba(0,0,0,0.08) !important; }
+.light .bg-white\\/\\[0\\.10\\] { background-color: rgba(0,0,0,0.10) !important; }
+.light .bg-white\\/5  { background-color: rgba(0,0,0,0.06) !important; }
+.light .bg-white\\/10 { background-color: rgba(0,0,0,0.10) !important; }
+
+/* hover: variants — same remapping */
+.light .hover\\:bg-white\\/\\[0\\.01\\]:hover { background-color: rgba(0,0,0,0.015) !important; }
+.light .hover\\:bg-white\\/\\[0\\.02\\]:hover { background-color: rgba(0,0,0,0.025) !important; }
+.light .hover\\:bg-white\\/\\[0\\.03\\]:hover { background-color: rgba(0,0,0,0.04) !important; }
+.light .hover\\:bg-white\\/\\[0\\.04\\]:hover { background-color: rgba(0,0,0,0.05) !important; }
+.light .hover\\:bg-white\\/\\[0\\.05\\]:hover { background-color: rgba(0,0,0,0.06) !important; }
+.light .hover\\:bg-white\\/\\[0\\.06\\]:hover { background-color: rgba(0,0,0,0.08) !important; }
+.light .hover\\:bg-white\\/\\[0\\.08\\]:hover { background-color: rgba(0,0,0,0.10) !important; }
+
+/* bg-black/[alpha] — in light mode the backdrop overlays use black;
+   keep them but soften slightly so they don't overpower. */
+.light .bg-black\\/60 { background-color: rgba(0,0,0,0.45) !important; }
+.light .bg-black\\/\\[0\\.08\\] { background-color: rgba(0,0,0,0.04) !important; }
+.light .bg-black\\/30 { background-color: rgba(0,0,0,0.12) !important; }
+
+/* shadow-black overrides for light mode */
+.light [class*="shadow-black"] {
+  --tw-shadow-color: rgba(0,0,0,0.06);
+}
+
+/* ── PWA / Mobile utilities (Block AL) ──────────────────── */
+
+/* Safe area insets for notched phones (iPhone X+, Android punch-hole) */
+.safe-area-top    { padding-top: env(safe-area-inset-top, 0); }
+.safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0); }
+
+/* Hide scrollbar but keep scrollable (for filter pill rows) */
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Standalone PWA — hide browser chrome indicators */
+@media (display-mode: standalone) {
+  body { user-select: none; -webkit-user-select: none; }
+}

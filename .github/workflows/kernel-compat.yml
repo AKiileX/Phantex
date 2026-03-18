@@ -1,0 +1,154 @@
+# ============================================================================
+# Phantex — eBPF Kernel Compatibility CI
+# Tests probe loading across multiple Linux kernel versions.
+# Triggers on changes to sensor eBPF or Go loader code.
+# ============================================================================
+name: Kernel Compatibility
+
+on:
+  # push:                   # disabled — no CI infra yet
+  #   branches: [main]
+  #   paths:
+  #     - "sensor/ebpf/**"
+  #     - "sensor/internal/loader/**"
+  #     - "sensor/internal/probe/**"
+  #     - "sensor/Makefile"
+  #     - "infra/kernel-test/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "sensor/ebpf/**"
+      - "sensor/internal/loader/**"
+      - "sensor/internal/probe/**"
+      - "sensor/Makefile"
+      - "infra/kernel-test/**"
+  # schedule:
+  #   - cron: "0 3 * * *"   # Nightly at 03:00 UTC
+  workflow_dispatch:          # manual trigger
+
+concurrency:
+  group: kernel-compat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  load-kernels:
+    name: Load kernel matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: Read kernel matrix
+        id: set
+        run: |
+          echo "matrix=$(cat infra/kernel-test/kernels.json | jq -c .)" >> "$GITHUB_OUTPUT"
+
+  compile-probes:
+    name: Compile eBPF probes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - name: Install eBPF build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 llvm-18 libbpf-dev linux-tools-common
+
+          # Try kernel-specific package first, then the flavour meta-package
+          # (ubuntu-latest runners use Azure kernels), then generic fallback.
+          sudo apt-get install -y "linux-tools-$(uname -r)" 2>/dev/null \
+            || sudo apt-get install -y linux-tools-azure 2>/dev/null \
+            || sudo apt-get install -y linux-tools-generic 2>/dev/null \
+            || true
+
+          # Symlink bpftool into PATH if it ended up under /usr/lib/linux-tools/
+          if ! command -v bpftool &>/dev/null; then
+            BPFTOOL_PATH=$(find /usr/lib/linux-tools -name bpftool -type f 2>/dev/null | tail -1)
+            if [ -n "$BPFTOOL_PATH" ]; then
+              sudo ln -sf "$BPFTOOL_PATH" /usr/local/bin/bpftool
+            fi
+          fi
+          bpftool version
+      - name: Compile probes
+        run: |
+          cd sensor
+          make probes
+      - name: Upload compiled probes
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: bpf-objects
+          path: sensor/ebpf/build/*.bpf.o
+
+  test-kernel:
+    name: "Test on ${{ matrix.kernel.version }}"
+    runs-on: ubuntu-latest
+    needs: [load-kernels, compile-probes]
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel: ${{ fromJson(needs.load-kernels.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Download compiled probes
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: bpf-objects
+          path: sensor/ebpf/
+
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # v5.0.2
+        with:
+          go-version: "1.23"
+          cache-dependency-path: sensor/go.sum
+
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 wget curl
+
+      - name: Download kernel image
+        run: |
+          cd infra/kernel-test
+          make download-kernel KERNEL_VERSION=${{ matrix.kernel.version }}
+
+      - name: Run probe loading test
+        timeout-minutes: 10
+        run: |
+          cd infra/kernel-test
+          bash test_probes.sh \
+            --kernel "${{ matrix.kernel.version }}" \
+            --probes "../../sensor/ebpf" \
+            --timeout 300
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: kernel-test-${{ matrix.kernel.version }}
+          path: infra/kernel-test/results/
+
+  # ── Summary Gate ───────────────────────────────────────────────
+  kernel-compat-gate:
+    name: Kernel Compatibility Gate
+    runs-on: ubuntu-latest
+    needs: test-kernel
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          if [ "${{ needs.test-kernel.result }}" == "failure" ]; then
+            echo "::error::eBPF probe loading failed on one or more kernel versions"
+            echo "Check individual kernel test jobs for verifier logs"
+            exit 1
+          fi
+          echo "All kernel compatibility tests passed"
+
+      - name: Notify on nightly failure
+        if: failure() && github.event_name == 'schedule'
+        uses: slackapi/slack-github-action@485a9d42d3a73031f12ec201c457e2162c45d02d # v2.0.0
+        with:
+          payload: |
+            {
+              "text": ":rotating_light: Phantex nightly kernel compatibility test FAILED\nSee: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

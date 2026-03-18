@@ -1,0 +1,11 @@
+# Rule: trust_score_low_warning
+# Category: Trust Violation
+# Severity: medium
+# Attack Class: trust_degradation
+#
+# Early-warning: fires when trust score drops below 0.5 but is still >= 0.3.
+# Generates a medium-severity alert, allowing SOC teams to investigate before
+# the agent crosses the critical threshold.
+
+trust_score(event.agent_id, "agent") < 0.5
+AND trust_score(event.agent_id, "agent") >= 0.3

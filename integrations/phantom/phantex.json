@@ -1,0 +1,209 @@
+{
+    "appid": "com.phantex.edr",
+    "name": "Phantex EDR",
+    "description": "Splunk SOAR app for Phantex agent-behaviour EDR. Bidirectional alert ingestion, enrichment, and automated response.",
+    "type": "endpoint",
+    "product_vendor": "Phantex Security",
+    "product_name": "Phantex EDR",
+    "product_version_regex": ".*",
+    "publisher": "Phantex Security",
+    "license": "MIT",
+    "app_version": "1.0.0",
+    "utctime_updated": "2025-01-01T00:00:00.000000Z",
+    "package_name": "phantom_phantex",
+    "main_module": "phantex_connector.py",
+    "min_phantom_version": "5.4.0",
+    "python_version": "3",
+    "logo": "logo_phantex.svg",
+    "logo_dark": "logo_phantex_dark.svg",
+    "configuration": {
+        "base_url": {
+            "description": "Phantex API URL",
+            "data_type": "string",
+            "required": true,
+            "order": 0
+        },
+        "api_key": {
+            "description": "SOAR API Key (phx_sk_...)",
+            "data_type": "password",
+            "required": true,
+            "order": 1
+        },
+        "verify_ssl": {
+            "description": "Verify SSL certificates",
+            "data_type": "boolean",
+            "required": false,
+            "default": true,
+            "order": 2
+        }
+    },
+    "actions": [
+        {
+            "action": "test connectivity",
+            "identifier": "test_connectivity",
+            "description": "Validate the asset configuration",
+            "type": "test",
+            "read_only": true,
+            "parameters": {},
+            "output": [],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "get alerts",
+            "identifier": "get_alerts",
+            "description": "Fetch alerts from Phantex",
+            "type": "investigate",
+            "read_only": true,
+            "parameters": {
+                "severity": {
+                    "description": "Filter by severity",
+                    "data_type": "string",
+                    "required": false,
+                    "order": 0
+                },
+                "status": {
+                    "description": "Filter by status",
+                    "data_type": "string",
+                    "required": false,
+                    "order": 1
+                },
+                "limit": {
+                    "description": "Max alerts to return",
+                    "data_type": "numeric",
+                    "required": false,
+                    "default": 50,
+                    "order": 2
+                }
+            },
+            "output": [
+                {"data_path": "action_result.data.*.id", "data_type": "string"},
+                {"data_path": "action_result.data.*.title", "data_type": "string"},
+                {"data_path": "action_result.data.*.severity", "data_type": "string"},
+                {"data_path": "action_result.data.*.status", "data_type": "string"},
+                {"data_path": "action_result.data.*.agent_id", "data_type": "string"},
+                {"data_path": "action_result.data.*.created_at", "data_type": "string"}
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "enrich alert",
+            "identifier": "enrich_alert",
+            "description": "Get full enrichment for an alert",
+            "type": "investigate",
+            "read_only": true,
+            "parameters": {
+                "alert_id": {
+                    "description": "Alert ID",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 0,
+                    "contains": ["phantex alert id"]
+                }
+            },
+            "output": [
+                {"data_path": "action_result.data.*.alert_id", "data_type": "string", "contains": ["phantex alert id"]},
+                {"data_path": "action_result.data.*.severity", "data_type": "string"},
+                {"data_path": "action_result.data.*.agent_hostname", "data_type": "string", "contains": ["host name"]},
+                {"data_path": "action_result.data.*.agent_trust_score", "data_type": "numeric"},
+                {"data_path": "action_result.data.*.atlas_mapping", "data_type": "string"}
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "isolate agent",
+            "identifier": "isolate_agent",
+            "description": "Network-isolate an agent",
+            "type": "contain",
+            "read_only": false,
+            "parameters": {
+                "agent_id": {
+                    "description": "Agent ID to isolate",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 0
+                },
+                "reason": {
+                    "description": "Justification",
+                    "data_type": "string",
+                    "required": false,
+                    "default": "Phantom automated response",
+                    "order": 1
+                }
+            },
+            "output": [
+                {"data_path": "action_result.data.*.id", "data_type": "string"},
+                {"data_path": "action_result.data.*.result", "data_type": "string"}
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "acknowledge alert",
+            "identifier": "acknowledge_alert",
+            "description": "Acknowledge an alert",
+            "type": "generic",
+            "read_only": false,
+            "parameters": {
+                "alert_id": {"description": "Alert ID", "data_type": "string", "required": true, "order": 0},
+                "reason": {"description": "Reason", "data_type": "string", "required": false, "order": 1}
+            },
+            "output": [
+                {"data_path": "action_result.data.*.id", "data_type": "string"},
+                {"data_path": "action_result.data.*.result", "data_type": "string"}
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "resolve alert",
+            "identifier": "resolve_alert",
+            "description": "Resolve an alert",
+            "type": "generic",
+            "read_only": false,
+            "parameters": {
+                "alert_id": {"description": "Alert ID", "data_type": "string", "required": true, "order": 0},
+                "reason": {"description": "Reason", "data_type": "string", "required": false, "order": 1}
+            },
+            "output": [
+                {"data_path": "action_result.data.*.id", "data_type": "string"},
+                {"data_path": "action_result.data.*.result", "data_type": "string"}
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "escalate alert",
+            "identifier": "escalate_alert",
+            "description": "Escalate an alert to critical",
+            "type": "generic",
+            "read_only": false,
+            "parameters": {
+                "alert_id": {"description": "Alert ID", "data_type": "string", "required": true, "order": 0},
+                "reason": {"description": "Reason", "data_type": "string", "required": false, "order": 1}
+            },
+            "output": [
+                {"data_path": "action_result.data.*.id", "data_type": "string"},
+                {"data_path": "action_result.data.*.result", "data_type": "string"}
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "collect forensics",
+            "identifier": "collect_forensics",
+            "description": "Trigger forensic data collection on an agent",
+            "type": "investigate",
+            "read_only": false,
+            "parameters": {
+                "agent_id": {"description": "Agent ID", "data_type": "string", "required": true, "order": 0},
+                "reason": {"description": "Reason", "data_type": "string", "required": false, "order": 1}
+            },
+            "output": [
+                {"data_path": "action_result.data.*.id", "data_type": "string"},
+                {"data_path": "action_result.data.*.result", "data_type": "string"}
+            ],
+            "versions": "EQ(*)"
+        }
+    ],
+    "pip_dependencies": {
+        "wheel": [
+            {"module": "requests", "input_file": "wheels/requests-2.31.0-py3-none-any.whl"}
+        ]
+    }
+}

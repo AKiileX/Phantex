@@ -1,0 +1,290 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PHANTEX Helm Chart — On-Premises Values Override
+#
+# Deploys the full PHANTEX stack with all infrastructure running locally
+# inside the Kubernetes cluster.  No cloud service dependencies.
+#
+# Tested on: K3s 1.28+, RKE2 1.27+, OpenShift 4.12+
+#
+# Usage:
+#   helm install phantex ./infra/helm/phantex \
+#       -f infra/helm/phantex/values-onprem.yaml \
+#       --namespace phantex --create-namespace
+#
+# Prerequisites:
+#   1. Container images loaded into local registry (see packaging/airgap/)
+#   2. Create secrets before install:
+#      kubectl -n phantex create secret generic phantex-db-credentials \
+#          --from-literal=password=<STRONG_PASSWORD>
+#      kubectl -n phantex create secret generic phantex-jwt \
+#          --from-literal=secret=<RANDOM_256BIT_HEX>
+#      kubectl -n phantex create secret generic phantex-sensor-token \
+#          --from-literal=token=<RANDOM_TOKEN>
+#      kubectl -n phantex create secret generic phantex-clickhouse-credentials \
+#          --from-literal=password=<STRONG_PASSWORD>
+#      kubectl -n phantex create secret generic phantex-neo4j-credentials \
+#          --from-literal=password=<STRONG_PASSWORD>
+#      kubectl -n phantex create secret generic phantex-trust-engine-key \
+#          --from-literal=api-key=<RANDOM_TOKEN>
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Global ───────────────────────────────────────────────────────────────────
+global:
+  # Point to your air-gapped / internal registry
+  # Images must be pre-loaded (see packaging/airgap/install.sh)
+  imageRegistry: "registry.internal:5000"
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+  # Set to true if using a private registry that requires auth
+  # imagePullSecrets:
+  #   - name: regcred
+
+# ── Sensor ───────────────────────────────────────────────────────────────────
+sensor:
+  enabled: true
+  config:
+    gatewayAddress: "phantex-gateway:50051"
+    logLevel: info
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# ── Gateway ──────────────────────────────────────────────────────────────────
+gateway:
+  replicas: 2
+  autoscaling:
+    enabled: false        # disable HPA for predictable on-prem sizing
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── Backend ──────────────────────────────────────────────────────────────────
+backend:
+  replicas: 2
+  env:
+    PHANTEX_ENVIRONMENT: on-premises
+    PHANTEX_DEBUG: "false"
+    PHANTEX_LOG_LEVEL: INFO
+  autoscaling:
+    enabled: false        # fixed replica count for on-prem
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+# ── Storage Writer ───────────────────────────────────────────────────────────
+storageWriter:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ── Dashboard ────────────────────────────────────────────────────────────────
+dashboard:
+  replicas: 1             # single replica sufficient for most on-prem
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# ── Trust Engine ─────────────────────────────────────────────────────────────
+trustEngine:
+  enabled: true
+  replicas: 1
+  tls:
+    enabled: false        # enable after configuring self-signed CA
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: "local-path"    # K3s default; change for your storage
+    accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── Rule Engine ──────────────────────────────────────────────────────────────
+ruleEngine:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── ML Pipeline ──────────────────────────────────────────────────────────────
+mlPipeline:
+  consumers:
+    features:
+      enabled: true
+      replicas: 1
+      resources:
+        requests: { cpu: 200m, memory: 256Mi }
+        limits:   { cpu: 500m, memory: 512Mi }
+    inference:
+      enabled: true
+      replicas: 1
+      resources:
+        requests: { cpu: 500m, memory: 512Mi }
+        limits:   { cpu: "1", memory: 1Gi }
+    baseline:
+      enabled: true
+      replicas: 1
+      resources:
+        requests: { cpu: 200m, memory: 256Mi }
+        limits:   { cpu: 500m, memory: 512Mi }
+    content:
+      enabled: true
+      replicas: 1
+      resources:
+        requests: { cpu: 200m, memory: 256Mi }
+        limits:   { cpu: 500m, memory: 512Mi }
+
+# ── Ingress ──────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    # No cert-manager — use self-signed or corporate CA
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+    nginx.ingress.kubernetes.io/server-snippets: |
+      add_header X-Frame-Options "DENY" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  host: phantex.local               # override with your internal FQDN
+  tls:
+    enabled: true
+    # Self-signed certificate secret
+    # Create: kubectl -n phantex create secret tls phantex-tls \
+    #   --cert=tls.crt --key=tls.key
+    secretName: phantex-tls
+
+# ── PostgreSQL — LOCAL (internal to cluster) ─────────────────────────────────
+postgresql:
+  internal: true                     # deploy PostgreSQL inside the cluster
+  host: "phantex-postgres"
+  port: 5432
+  database: phantex
+  username: phantex_app
+  existingSecret: phantex-db-credentials
+  existingSecretKey: password
+  # Internal deployment config
+  image: "postgres:16-alpine"
+  storage:
+    size: 50Gi
+    storageClass: "local-path"       # K3s default; change for your storage
+  resources:
+    requests: { cpu: 200m, memory: 256Mi }
+    limits:   { cpu: "1", memory: 1Gi }
+
+# ── Kafka — LOCAL (KRaft, no ZooKeeper) ──────────────────────────────────────
+kafka:
+  internal: true
+  bootstrapServers: "phantex-kafka:9092"
+  port: 9092
+  # Internal deployment config
+  image: "apache/kafka:3.7.0"
+  storage:
+    size: 50Gi
+    storageClass: "local-path"
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: "1", memory: 1Gi }
+
+# ── Redis — LOCAL ────────────────────────────────────────────────────────────
+redis:
+  internal: true
+  host: "phantex-redis"
+  port: 6379
+  url: "redis://phantex-redis:6379/0"
+  # TIP: For additional defence-in-depth, set a password even with NetworkPolicy:
+  #   url: "redis://:PASSWORD@phantex-redis:6379/0"
+  #   requirepass: true
+  #   existingSecret: phantex-redis-credentials
+  # Internal deployment config
+  image: "redis:7-alpine"
+  args: ["--maxmemory", "96mb", "--maxmemory-policy", "allkeys-lru"]
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 128Mi }
+
+# ── ClickHouse — LOCAL ───────────────────────────────────────────────────────
+clickhouse:
+  internal: true
+  host: "phantex-clickhouse"
+  httpPort: 8123
+  nativePort: 9000
+  existingSecret: phantex-clickhouse-credentials
+  existingSecretKey: password
+  # Internal deployment config
+  image: "clickhouse/clickhouse-server:24.1-alpine"
+  storage:
+    size: 100Gi
+    storageClass: "local-path"
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: "2", memory: 2Gi }
+
+# ── Neo4j — LOCAL ────────────────────────────────────────────────────────────
+neo4j:
+  internal: true
+  uri: "bolt://phantex-neo4j:7687"
+  boltPort: 7687
+  existingSecret: phantex-neo4j-credentials
+  existingSecretKey: password
+  # Internal deployment config
+  image: "neo4j:5.17-community"
+  storage:
+    size: 20Gi
+    storageClass: "local-path"
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: "1", memory: 1Gi }
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+secrets:
+  create: false                       # create manually before install (see above)
+  jwtSecret:
+    existingSecret: phantex-jwt
+    existingSecretKey: secret
+
+# ── Network Policy ───────────────────────────────────────────────────────────
+networkPolicy:
+  enabled: true
+  ingressNamespace: ingress-nginx
+  dataNamespace: "phantex"            # infra runs in same namespace
+  externalSensorCIDRs:
+    - "10.0.0.0/8"                    # allow sensors from internal network
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"
+
+# ── Pod Security ─────────────────────────────────────────────────────────────
+podSecurityStandards:
+  enforce: restricted

@@ -1,0 +1,22 @@
+# Rule: suspicious_network_dest
+# Category: Data Exfiltration
+# Severity: high
+# Attack Class: exfiltration
+#
+# Detects network connections to IP addresses outside typical private ranges
+# AND not in the configured network allowlist.
+# Agents that normally only communicate with known APIs (e.g., OpenAI, Anthropic)
+# connecting to unknown external IPs may indicate data exfiltration.
+#
+# Logic:
+#   1. Exclude RFC 1918 private ranges, loopback, and link-local
+#   2. Exclude common container/k8s overlay CIDRs (10.x, 172.16-31.x, 30.x, 100.64.x)
+#   3. Exclude destinations in "allowed_network_destinations" allowlist
+#   4. Only fires when an agent_id is attributed — infrastructure processes
+#      (k3s-server, kubelet, containerd) should not trigger this rule.
+# The allowlist lets operators whitelist known API endpoints.
+
+event.type == "NETWORK_CONNECT"
+AND event.agent_id != ""
+AND NOT regex_match("^(10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.|127\\.|0\\.0\\.0\\.0|::1|localhost|30\\.|100\\.64\\.)", event.raw_data.network.dst_addr)
+AND NOT in_allowlist(event.raw_data.network.dst_addr, "allowed_network_destinations")
