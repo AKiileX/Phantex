@@ -1,0 +1,49 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "phantex.fullname" . }}
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          # API + WebSocket → backend
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "phantex.fullname" . }}-backend
+                port:
+                  number: {{ .Values.backend.port }}
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "phantex.fullname" . }}-backend
+                port:
+                  number: {{ .Values.backend.port }}
+          # Everything else → dashboard SPA
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "phantex.fullname" . }}-dashboard
+                port:
+                  number: {{ .Values.dashboard.port }}
+{{- end }}

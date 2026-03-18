@@ -1,0 +1,131 @@
+{
+  "_version": "1.1.0",
+  "_description": "OCSF (Open Cybersecurity Schema Framework) v1.1 class definitions used by Phantex. Maps internal event types to standardized OCSF classes, categories, and required fields.",
+
+  "classes": {
+    "1007": {
+      "name": "Process Activity",
+      "category_uid": 1,
+      "category_name": "System Activity",
+      "description": "Process execution or termination events."
+    },
+    "1001": {
+      "name": "File Activity",
+      "category_uid": 1,
+      "category_name": "System Activity",
+      "description": "File open, read, write, delete events."
+    },
+    "4001": {
+      "name": "Network Activity",
+      "category_uid": 4,
+      "category_name": "Network Activity",
+      "description": "Network connection events (TCP/UDP)."
+    },
+    "6003": {
+      "name": "API Activity",
+      "category_uid": 6,
+      "category_name": "Application Activity",
+      "description": "API or tool call events from AI agents."
+    },
+    "4003": {
+      "name": "DNS Activity",
+      "category_uid": 4,
+      "category_name": "Network Activity",
+      "description": "DNS resolution events."
+    },
+    "2001": {
+      "name": "Security Finding",
+      "category_uid": 2,
+      "category_name": "Findings",
+      "description": "Security alerts, findings, and detections."
+    }
+  },
+
+  "event_type_mapping": {
+    "PROCESS_EXEC": {
+      "class_uid": 1007,
+      "activity_id": 1,
+      "activity_name": "Launch",
+      "type_uid": 100701
+    },
+    "FILE_OPEN": {
+      "class_uid": 1001,
+      "activity_id": 1,
+      "activity_name": "Open",
+      "type_uid": 100101
+    },
+    "FILE_READ": {
+      "class_uid": 1001,
+      "activity_id": 2,
+      "activity_name": "Read",
+      "type_uid": 100102
+    },
+    "FILE_WRITE": {
+      "class_uid": 1001,
+      "activity_id": 3,
+      "activity_name": "Write",
+      "type_uid": 100103
+    },
+    "NETWORK_CONNECT": {
+      "class_uid": 4001,
+      "activity_id": 1,
+      "activity_name": "Connect",
+      "type_uid": 400101
+    },
+    "TOOL_CALL": {
+      "class_uid": 6003,
+      "activity_id": 1,
+      "activity_name": "Call",
+      "type_uid": 600301
+    },
+    "DNS_QUERY": {
+      "class_uid": 4003,
+      "activity_id": 1,
+      "activity_name": "Query",
+      "type_uid": 400301
+    },
+    "alert": {
+      "class_uid": 2001,
+      "activity_id": 1,
+      "activity_name": "Create",
+      "type_uid": 200101
+    }
+  },
+
+  "severity_mapping": {
+    "info": 1,
+    "low": 2,
+    "medium": 3,
+    "high": 4,
+    "critical": 5
+  },
+
+  "status_mapping": {
+    "open": 1,
+    "acknowledged": 2,
+    "resolved": 3,
+    "false_positive": 4
+  },
+
+  "required_base_fields": [
+    "metadata",
+    "severity_id",
+    "class_uid",
+    "category_uid",
+    "activity_id",
+    "type_uid",
+    "time",
+    "message"
+  ],
+
+  "pii_fields": [
+    "actor.user.email_addr",
+    "actor.user.full_name",
+    "src_endpoint.ip",
+    "dst_endpoint.ip",
+    "dst_endpoint.domain",
+    "file.path",
+    "process.cmd_line",
+    "api.request.data"
+  ]
+}

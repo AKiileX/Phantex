@@ -1,0 +1,180 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025-2026 The Phantex Authors
+#
+# Phantex — Lite + ML Mode (~3.5 GB RAM)
+#
+# Overlay on docker-compose.lite.yml that adds the 4 ML workers for
+# behavioral detection. Use this when you want ML-based anomaly detection
+# but don't need ClickHouse analytics or Neo4j investigation graphs.
+#
+# Usage:
+#   docker compose -f docker-compose.lite.yml -f docker-compose.lite-ml.yml up -d
+#   ./quickstart.sh --lite-ml
+#
+# Additional services (4, adds ~1.5 GB):
+#   phantex-ml-features, phantex-ml-inference,
+#   phantex-ml-baseline, phantex-ml-content
+
+services:
+  # ── ML Feature Extraction Consumer (J1) ──────────────────────────────────
+  phantex-ml-features:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        sdk-src: ./sdk/python
+    container_name: phantex-ml-features
+    restart: unless-stopped
+    networks:
+      - backend
+      - messaging
+    entrypoint: ["python", "-m", "ml.main_features"]
+    volumes:
+      - ./proto:/app/proto:ro
+    environment:
+      PHANTEX_ENVIRONMENT: development
+      PHANTEX_ML_DEV_MODE: "true"
+      PHANTEX_DB_HOST: postgres
+      PHANTEX_DB_NAME: ${POSTGRES_DB:-phantex}
+      PHANTEX_DB_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_DB_ADMIN_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_KAFKA_BOOTSTRAP: kafka:9092
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD:-phantex-dev-redis-pw}@redis:6379/0"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.path.exists('/proc/1/status') or exit(1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── ML Inference Consumer (J3/J5) ────────────────────────────────────────
+  phantex-ml-inference:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        sdk-src: ./sdk/python
+    container_name: phantex-ml-inference
+    restart: unless-stopped
+    networks:
+      - backend
+      - messaging
+    entrypoint: ["python", "-m", "ml.main_inference"]
+    volumes:
+      - ./proto:/app/proto:ro
+    environment:
+      PHANTEX_ENVIRONMENT: development
+      PHANTEX_ML_DEV_MODE: "true"
+      PHANTEX_DB_HOST: postgres
+      PHANTEX_DB_NAME: ${POSTGRES_DB:-phantex}
+      PHANTEX_DB_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_DB_ADMIN_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_KAFKA_BOOTSTRAP: kafka:9092
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD:-phantex-dev-redis-pw}@redis:6379/0"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.path.exists('/proc/1/status') or exit(1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── ML Baseline Consumer (J4) ────────────────────────────────────────────
+  phantex-ml-baseline:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        sdk-src: ./sdk/python
+    container_name: phantex-ml-baseline
+    restart: unless-stopped
+    networks:
+      - backend
+      - messaging
+    entrypoint: ["python", "-m", "ml.main_baseline"]
+    volumes:
+      - ./proto:/app/proto:ro
+    environment:
+      PHANTEX_ENVIRONMENT: development
+      PHANTEX_ML_DEV_MODE: "true"
+      PHANTEX_DB_HOST: postgres
+      PHANTEX_DB_NAME: ${POSTGRES_DB:-phantex}
+      PHANTEX_DB_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_DB_ADMIN_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_KAFKA_BOOTSTRAP: kafka:9092
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD:-phantex-dev-redis-pw}@redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.path.exists('/proc/1/status') or exit(1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── ML Content Analysis Consumer (JB6) ───────────────────────────────────
+  phantex-ml-content:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        sdk-src: ./sdk/python
+    container_name: phantex-ml-content
+    restart: unless-stopped
+    networks:
+      - messaging
+    entrypoint: ["python", "-m", "ml.main_content"]
+    volumes:
+      - ./proto:/app/proto:ro
+    environment:
+      PHANTEX_ENVIRONMENT: development
+      PHANTEX_ML_DEV_MODE: "true"
+      PHANTEX_KAFKA_BOOTSTRAP: kafka:9092
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD:-phantex-dev-redis-pw}@redis:6379/0"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.path.exists('/proc/1/status') or exit(1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3

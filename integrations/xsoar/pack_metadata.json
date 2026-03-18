@@ -1,0 +1,14 @@
+{
+  "id": "phantex-xsoar-pack",
+  "version": "1.0.0",
+  "name": "Phantex EDR for XSOAR",
+  "description": "Cortex XSOAR integration pack for Phantex agent-behaviour EDR. Provides bidirectional alert ingestion, enrichment, and automated response actions.",
+  "author": "Phantex Security",
+  "tags": ["edr", "agent-behavior", "trust-scoring", "atlas"],
+  "categories": ["Endpoint"],
+  "useCases": ["Threat Hunting", "Incident Response", "Automated Remediation"],
+  "keywords": ["phantex", "edr", "agent", "trust", "atlas"],
+  "dependencies": {},
+  "marketplaces": ["xsoar"],
+  "support": "community"
+}

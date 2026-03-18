@@ -1,0 +1,85 @@
+# Phantex — Services
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "phantex.fullname" . }}-backend
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.backend.port }}
+      targetPort: {{ .Values.backend.port }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "phantex.selectorLabels" (dict "name" "phantex-backend" "release" .Release.Name) | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "phantex.fullname" . }}-gateway
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.gateway.port }}
+      targetPort: {{ .Values.gateway.port }}
+      protocol: TCP
+      name: grpc
+  selector:
+    {{- include "phantex.selectorLabels" (dict "name" "phantex-gateway" "release" .Release.Name) | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "phantex.fullname" . }}-dashboard
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.dashboard.port }}
+      targetPort: {{ .Values.dashboard.port }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "phantex.selectorLabels" (dict "name" "phantex-dashboard" "release" .Release.Name) | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "phantex.fullname" . }}-storage-writer
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage-writer
+spec:
+  type: ClusterIP
+  clusterIP: None                      # headless — no load-balanced VIP needed
+  selector:
+    {{- include "phantex.selectorLabels" (dict "name" "phantex-storage-writer" "release" .Release.Name) | nindent 4 }}
+---
+# Trust Engine — gRPC service (consumed by rule-engine and backend)
+{{- if .Values.trustEngine.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "phantex.fullname" . }}-trust-engine
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: trust-engine
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.trustEngine.port }}
+      targetPort: {{ .Values.trustEngine.port }}
+      protocol: TCP
+      name: grpc
+  selector:
+    {{- include "phantex.selectorLabels" (dict "name" "phantex-trust-engine" "release" .Release.Name) | nindent 4 }}
+{{- end }}

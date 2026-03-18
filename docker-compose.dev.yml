@@ -1,0 +1,677 @@
+# Phantex — Development Docker Compose
+#
+# One-command startup for the full development stack:
+#   docker compose -f docker-compose.dev.yml up
+#
+# Infrastructure:
+#   postgres       — PostgreSQL 16 on :5432
+#   kafka          — Apache Kafka 3.7 (KRaft) on :9092
+#   kafka-ui       — Kafka UI on :8080
+#   redis          — Redis 7 on :6379
+#   clickhouse     — ClickHouse 24.1 on :8123/:9000
+#   neo4j          — Neo4j 5.17 on :7474/:7687
+#
+# Application:
+#   phantex-backend       — FastAPI API on :8000
+#   phantex-gateway       — gRPC gateway on :50051
+#   phantex-trust-engine  — Trust Graph gRPC on :50052
+#   phantex-storage-writer — Kafka → PG/CH/Neo4j
+#   phantex-rule-engine   — PRL rule evaluation
+#   phantex-ml-features   — Feature extraction
+#   phantex-ml-inference  — Ensemble ML inference
+#   phantex-ml-baseline   — Behavioral baseline
+#   phantex-ml-content    — Content analysis (JB6)
+#   phantex-dashboard     — Vite dashboard on :3000
+#
+# Dev tools (profile: dev):
+#   phantex-simulator     — Agent event simulator
+#
+# First time setup:
+#   1. cp .env.example .env          (configure secrets)
+#   2. docker compose -f docker-compose.dev.yml up -d postgres kafka
+#   3. Wait for healthchecks, then:
+#      docker compose -f docker-compose.dev.yml run --rm phantex-backend \
+#        alembic upgrade head
+#   4. docker compose -f docker-compose.dev.yml up
+#
+# Tear down (preserve data):
+#   docker compose -f docker-compose.dev.yml down
+#
+# Tear down (destroy volumes):
+#   docker compose -f docker-compose.dev.yml down -v
+
+services:
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: phantex-postgres
+    restart: unless-stopped
+    networks:
+      - backend
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-phantex}
+      POSTGRES_USER: ${POSTGRES_USER:-phantex_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - phantex-pg-data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "log_statement=ddl"
+      - "-c"
+      - "log_min_duration_statement=500"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "shared_buffers=128MB"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-phantex_admin} -d ${POSTGRES_DB:-phantex}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # ── Kafka (KRaft — no Zookeeper) ──────────────────────────────────────────
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: phantex-kafka
+    hostname: kafka
+    restart: unless-stopped
+    networks:
+      - messaging
+    ports:
+      - "127.0.0.1:${KAFKA_PORT:-9092}:29092"
+      - "127.0.0.1:9093:9093"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,HOST://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CLUSTER_ID: phantex-dev-cluster-001
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_NUM_PARTITIONS: 6
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    volumes:
+      - phantex-kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ── Kafka UI ──────────────────────────────────────────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: phantex-kafka-ui
+    restart: unless-stopped
+    networks:
+      - messaging
+    ports:
+      - "127.0.0.1:${KAFKA_UI_PORT:-8080}:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: phantex-dev
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # ── Redis (rate limiting, WS tickets, pub/sub) ───────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: phantex-redis
+    restart: unless-stopped
+    networks:
+      - backend
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - phantex-redis-data:/data
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-phantex-dev-redis-pw}"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-phantex-dev-redis-pw}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # ── ClickHouse (I2 — Event Analytics) ─────────────────────────────────────
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.1-alpine
+    container_name: phantex-clickhouse
+    restart: unless-stopped
+    networks:
+      - backend
+    ports:
+      - "127.0.0.1:${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+      - "127.0.0.1:${CLICKHOUSE_TCP_PORT:-9000}:9000"
+    volumes:
+      - phantex-ch-data:/var/lib/clickhouse
+      - ./infra/clickhouse/schema:/docker-entrypoint-initdb.d:ro
+      - ./infra/clickhouse/clickhouse-config.xml:/etc/clickhouse-server/config.d/phantex.xml:ro
+      - ./infra/clickhouse/docker_related_config.xml:/etc/clickhouse-server/config.d/docker_related_config.xml:ro
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-phantex}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-phantex}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-phantex-dev-password}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  # ── Neo4j (I3 — Investigation Graphs) ─────────────────────────────────────
+  neo4j:
+    image: neo4j:5.17-community
+    container_name: phantex-neo4j
+    restart: unless-stopped
+    networks:
+      - backend
+    ports:
+      - "127.0.0.1:${NEO4J_HTTP_PORT:-7474}:7474"
+      - "127.0.0.1:${NEO4J_BOLT_PORT:-7687}:7687"
+    volumes:
+      - phantex-neo4j-data:/data
+      - ./infra/neo4j/schema:/var/lib/neo4j/import
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-phantex-dev-password}
+      NEO4J_PLUGINS: '[]'
+      NEO4J_server_memory_heap_initial__size: "256m"
+      NEO4J_server_memory_heap_max__size: "512m"
+      NEO4J_server_memory_pagecache_size: "128m"
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p ${NEO4J_PASSWORD:-phantex-dev-password} 'RETURN 1'"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 45s
+
+  # ── Kafka Topic Init ──────────────────────────────────────────────────────
+  kafka-init:
+    image: apache/kafka:3.7.0
+    container_name: phantex-kafka-init
+    networks:
+      - messaging
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "Creating Phantex Kafka topics..."
+        # Per-tenant topics for dev seed tenant (002_bootstrap.sql)
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic phantex.events.a0000000-0000-0000-0000-000000000001 --partitions 6 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic phantex.alerts.a0000000-0000-0000-0000-000000000001 --partitions 3 --replication-factor 1
+        echo "Topics created successfully."
+
+  # ── Backend API ───────────────────────────────────────────────────────────
+  phantex-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        sdk-src: ./sdk/python
+    container_name: phantex-backend
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - frontend
+      - backend
+      - messaging
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./backend/app:/app/app:ro
+      - ./backend/engine:/app/engine:ro
+      - ./backend/ml:/app/ml:ro
+      - ./backend/models:/app/models
+      - ./backend/tests:/app/tests:ro
+      - ./proto:/app/proto:ro
+      - ./verification:/app/verification:ro
+      - ./rules:/rules:ro
+    environment:
+      PHANTEX_ENVIRONMENT: development
+      PHANTEX_DEBUG: "true"
+      PHANTEX_ML_DEV_MODE: "true"
+      PHANTEX_DB_HOST: postgres
+      PHANTEX_DB_NAME: ${POSTGRES_DB:-phantex}
+      PHANTEX_DB_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_DB_ADMIN_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_JWT_SECRET: ${JWT_SECRET:-phantex-dev-jwt-secret-change-in-production}
+      PHANTEX_KAFKA_BOOTSTRAP: kafka:9092
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD:-phantex-dev-redis-pw}@redis:6379/0"
+      PHANTEX_CLICKHOUSE_HOST: clickhouse
+      PHANTEX_CLICKHOUSE_PORT: 8123
+      PHANTEX_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-phantex-dev-password}
+      PHANTEX_NEO4J_URI: bolt://neo4j:7687
+      PHANTEX_NEO4J_PASSWORD: ${NEO4J_PASSWORD:-phantex-dev-password}
+      PHANTEX_CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
+      TRUST_ENGINE_ADDR: phantex-trust-engine:50052
+      # ── Copilot LLM Configuration ──
+      # Default: local LLM server (LM Studio, Ollama, vLLM, etc.)
+      # Configured via Admin → Settings → Copilot AI in dashboard.
+      # Env vars are fallback defaults — DB config takes priority.
+      COPILOT_PROVIDER: ${COPILOT_PROVIDER:-local}
+      COPILOT_LOCAL_URL: ${COPILOT_LOCAL_URL:-http://host.docker.internal:1234/v1}
+      COPILOT_LOCAL_MODEL: ${COPILOT_LOCAL_MODEL:-mistral}
+      COPILOT_MAX_TOKENS: "4096"
+      COPILOT_TEMPERATURE: "0.3"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # ── Internal API (gateway ↔ backend command relay) ──
+      PHANTEX_INTERNAL_TOKEN: ${PHANTEX_INTERNAL_TOKEN:-phantex-dev-internal-token}
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app", "--proxy-headers", "--forwarded-allow-ips", "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16", "--no-server-header"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 5
+
+  # ── Gateway (gRPC sensor intake) ──────────────────────────────────────────
+  phantex-gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    container_name: phantex-gateway
+    restart: unless-stopped
+    networks:
+      - backend
+      - messaging
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-50051}:50051"
+    volumes:
+      - ./gateway/gateway.yaml:/etc/phantex/gateway.yaml:ro
+    environment:
+      PHANTEX_KAFKA_BOOTSTRAP: kafka:9092
+      PHANTEX_LISTEN_ADDR: "0.0.0.0:50051"
+      # ── Internal API (gateway → backend command relay) ──
+      PHANTEX_BACKEND_URL: http://phantex-backend:8000
+      PHANTEX_INTERNAL_TOKEN: ${PHANTEX_INTERNAL_TOKEN:-phantex-dev-internal-token}
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/phantex-gateway", "--version"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  # ── Consumer (Kafka debug consumer) ──────────────────────────────────────
+  phantex-consumer:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    container_name: phantex-consumer
+    restart: unless-stopped
+    networks:
+      - messaging
+    entrypoint: ["/usr/local/bin/phantex-consumer"]
+    command: ["--broker", "kafka:9092", "--topic", "phantex.events.a0000000-0000-0000-0000-000000000001", "--group", "phantex-dev-consumer"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    profiles:
+      - debug          # Only starts with: docker compose --profile debug up
+
+  # ── Storage Writers (I4 — Kafka → PG/CH/Neo4j) ──────────────────────────
+  phantex-storage-writer:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        sdk-src: ./sdk/python
+    container_name: phantex-storage-writer
+    restart: unless-stopped
+    networks:
+      - backend
+      - messaging
+    entrypoint: ["python", "-m", "app.main_consumer"]
+    volumes:
+      - ./proto:/app/proto:ro
+    environment:
+      PHANTEX_ENVIRONMENT: development
+      PHANTEX_ML_DEV_MODE: "true"
+      PHANTEX_DB_HOST: postgres
+      PHANTEX_DB_NAME: ${POSTGRES_DB:-phantex}
+      PHANTEX_DB_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_DB_ADMIN_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_KAFKA_BOOTSTRAP: kafka:9092
+      PHANTEX_CLICKHOUSE_HOST: clickhouse
+      PHANTEX_CLICKHOUSE_PORT: 8123
+      PHANTEX_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-phantex-dev-password}
+      PHANTEX_NEO4J_URI: bolt://neo4j:7687
+      PHANTEX_NEO4J_PASSWORD: ${NEO4J_PASSWORD:-phantex-dev-password}
+      TRUST_ENGINE_ADDR: phantex-trust-engine:50052
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      phantex-trust-engine:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.path.exists('/proc/1/status') or exit(1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  # ── Dashboard (Vite dev server) ───────────────────────────────────────────
+  phantex-dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: phantex-dashboard
+    restart: unless-stopped
+    networks:
+      - frontend
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-3000}:80"
+    depends_on:
+      phantex-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:80/"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  # ── Trust Engine (Rust gRPC) ───────────────────────────────────────────────
+  phantex-trust-engine:
+    build:
+      context: .
+      dockerfile: trust-engine/Dockerfile
+    container_name: phantex-trust-engine
+    restart: unless-stopped
+    networks:
+      - backend
+    ports:
+      - "127.0.0.1:${TRUST_ENGINE_PORT:-50052}:50052"
+    environment:
+      TRUST_ENGINE_GRPC_ADDR: "0.0.0.0:50052"
+      TRUST_ENGINE_SNAPSHOT__DIR: /data/snapshots
+      RUST_LOG: info
+    volumes:
+      - phantex-trust-snapshots:/data/snapshots
+    healthcheck:
+      test: ["CMD-SHELL", "echo ok"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── Rule Engine (PRL evaluation) ──────────────────────────────────────────
+  phantex-rule-engine:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        sdk-src: ./sdk/python
+    container_name: phantex-rule-engine
+    restart: unless-stopped
+    networks:
+      - backend
+      - messaging
+    entrypoint: ["python", "-m", "engine.rule_engine"]
+    environment:
+      PHANTEX_ENVIRONMENT: development
+      PHANTEX_DB_HOST: postgres
+      PHANTEX_DB_NAME: ${POSTGRES_DB:-phantex}
+      PHANTEX_DB_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_DB_ADMIN_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_KAFKA_BOOTSTRAP: kafka:9092
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD:-phantex-dev-redis-pw}@redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./proto:/app/proto:ro
+      - ./rules:/app/rules:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.path.exists('/proc/1/status') or exit(1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── ML Feature Extraction Consumer (J1) ──────────────────────────────────
+  phantex-ml-features:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        sdk-src: ./sdk/python
+    container_name: phantex-ml-features
+    restart: unless-stopped
+    networks:
+      - backend
+      - messaging
+    entrypoint: ["python", "-m", "ml.main_features"]
+    volumes:
+      - ./proto:/app/proto:ro
+    environment:
+      PHANTEX_ENVIRONMENT: development
+      PHANTEX_ML_DEV_MODE: "true"
+      PHANTEX_DB_HOST: postgres
+      PHANTEX_DB_NAME: ${POSTGRES_DB:-phantex}
+      PHANTEX_DB_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_DB_ADMIN_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_KAFKA_BOOTSTRAP: kafka:9092
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD:-phantex-dev-redis-pw}@redis:6379/0"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.path.exists('/proc/1/status') or exit(1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── ML Inference Consumer (J3/J5) ────────────────────────────────────────
+  phantex-ml-inference:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        sdk-src: ./sdk/python
+    container_name: phantex-ml-inference
+    restart: unless-stopped
+    networks:
+      - backend
+      - messaging
+    entrypoint: ["python", "-m", "ml.main_inference"]
+    volumes:
+      - ./proto:/app/proto:ro
+    environment:
+      PHANTEX_ENVIRONMENT: development
+      PHANTEX_ML_DEV_MODE: "true"
+      PHANTEX_DB_HOST: postgres
+      PHANTEX_DB_NAME: ${POSTGRES_DB:-phantex}
+      PHANTEX_DB_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_DB_ADMIN_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_KAFKA_BOOTSTRAP: kafka:9092
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD:-phantex-dev-redis-pw}@redis:6379/0"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.path.exists('/proc/1/status') or exit(1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── ML Baseline Consumer (J4) ────────────────────────────────────────────
+  phantex-ml-baseline:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        sdk-src: ./sdk/python
+    container_name: phantex-ml-baseline
+    restart: unless-stopped
+    networks:
+      - backend
+      - messaging
+    entrypoint: ["python", "-m", "ml.main_baseline"]
+    volumes:
+      - ./proto:/app/proto:ro
+    environment:
+      PHANTEX_ENVIRONMENT: development
+      PHANTEX_ML_DEV_MODE: "true"
+      PHANTEX_DB_HOST: postgres
+      PHANTEX_DB_NAME: ${POSTGRES_DB:-phantex}
+      PHANTEX_DB_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_DB_ADMIN_USER: ${POSTGRES_USER:-phantex_admin}
+      PHANTEX_DB_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:-phantex-dev-password}
+      PHANTEX_KAFKA_BOOTSTRAP: kafka:9092
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD:-phantex-dev-redis-pw}@redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.path.exists('/proc/1/status') or exit(1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── ML Content Analysis Consumer (JB6) ───────────────────────────────────
+  phantex-ml-content:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        sdk-src: ./sdk/python
+    container_name: phantex-ml-content
+    restart: unless-stopped
+    networks:
+      - messaging
+    entrypoint: ["python", "-m", "ml.main_content"]
+    volumes:
+      - ./proto:/app/proto:ro
+    environment:
+      PHANTEX_ENVIRONMENT: development
+      PHANTEX_ML_DEV_MODE: "true"
+      PHANTEX_KAFKA_BOOTSTRAP: kafka:9092
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD:-phantex-dev-redis-pw}@redis:6379/0"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.path.exists('/proc/1/status') or exit(1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  # ── Agent Simulator (dev tool) ────────────────────────────────────────────
+  phantex-simulator:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      additional_contexts:
+        sdk-src: ./sdk/python
+    container_name: phantex-simulator
+    restart: unless-stopped
+    networks:
+      - messaging
+    entrypoint: ["python", "/opt/simulator/agent-simulator.py", "--broker", "kafka:9092", "--rate", "2.0", "--attack-chance", "0.08"]
+    volumes:
+      - ./scripts/agent-simulator.py:/opt/simulator/agent-simulator.py:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+    profiles:
+      - dev             # Only starts with: docker compose --profile dev up
+
+# ── Volumes ─────────────────────────────────────────────────────────────────
+volumes:
+  phantex-pg-data:
+    name: phantex-pg-data
+  phantex-kafka-data:
+    name: phantex-kafka-data
+  phantex-redis-data:
+    name: phantex-redis-data
+  phantex-ch-data:
+    name: phantex-ch-data
+  phantex-neo4j-data:
+    name: phantex-neo4j-data
+  phantex-trust-snapshots:
+    name: phantex-trust-snapshots
+
+# ── Networks (defense in depth — isolate traffic by tier) ───────────────────
+networks:
+  frontend:
+    name: phantex-frontend
+  backend:
+    name: phantex-backend
+  messaging:
+    name: phantex-messaging
+

@@ -1,0 +1,19 @@
+Phantex
+Copyright 2025-2026 The Phantex Authors
+
+This product includes software developed at
+https://github.com/AKiileX/Phantex
+
+Licensed under the Apache License, Version 2.0.
+
+Third-party components:
+- Go standard library (BSD-3-Clause)
+- Python (PSF License)
+- Rust / Cargo ecosystem (Apache-2.0 / MIT)
+- React / Vite (MIT)
+- gRPC / Protocol Buffers (Apache-2.0)
+- eBPF / libbpf (LGPL-2.1 / BSD-2-Clause)
+- ClickHouse Go client (Apache-2.0)
+- Zap logger (MIT)
+- structlog (Apache-2.0 / MIT)
+- Pydantic (MIT)

@@ -1,0 +1,330 @@
+{
+  "_version": "1.0",
+  "_description": "MITRE ATLAS (Adversarial Threat Landscape for AI Systems) technique mappings for Phantex detection rules, ML models, and content classifiers.",
+
+  "techniques": {
+    "AML.T0051": {
+      "name": "LLM Prompt Injection",
+      "tactic": "Initial Access",
+      "url": "https://atlas.mitre.org/techniques/AML.T0051",
+      "description": "Adversary crafts malicious input to manipulate an LLM's behavior, bypassing alignment or safety constraints."
+    },
+    "AML.T0051.001": {
+      "name": "Direct Prompt Injection",
+      "tactic": "Initial Access",
+      "url": "https://atlas.mitre.org/techniques/AML.T0051/001",
+      "description": "Directly injecting malicious instructions into an LLM prompt."
+    },
+    "AML.T0051.002": {
+      "name": "Indirect Prompt Injection",
+      "tactic": "Initial Access",
+      "url": "https://atlas.mitre.org/techniques/AML.T0051/002",
+      "description": "Embedding malicious instructions in external data sources consumed by an LLM."
+    },
+    "AML.T0020": {
+      "name": "Poison Training Data",
+      "tactic": "ML Attack Staging",
+      "url": "https://atlas.mitre.org/techniques/AML.T0020",
+      "description": "Adversary contaminates training data to embed backdoors or degrade model performance."
+    },
+    "AML.T0015": {
+      "name": "Evade ML Model",
+      "tactic": "ML Attack Staging",
+      "url": "https://atlas.mitre.org/techniques/AML.T0015",
+      "description": "Adversary crafts inputs to evade detection by ML models while maintaining malicious functionality."
+    },
+    "AML.T0024": {
+      "name": "Exfiltration via ML Inference API",
+      "tactic": "Exfiltration",
+      "url": "https://atlas.mitre.org/techniques/AML.T0024",
+      "description": "Using AI system APIs to exfiltrate sensitive data embedded in model responses."
+    },
+    "AML.T0025": {
+      "name": "Exfiltration via Cyber Means",
+      "tactic": "Exfiltration",
+      "url": "https://atlas.mitre.org/techniques/AML.T0025",
+      "description": "Data extraction through conventional network channels triggered by AI agent operations."
+    },
+    "AML.T0010": {
+      "name": "ML Supply Chain Compromise",
+      "tactic": "Initial Access",
+      "url": "https://atlas.mitre.org/techniques/AML.T0010",
+      "description": "Compromising ML supply chain components (models, packages, MCP servers)."
+    },
+    "AML.T0029": {
+      "name": "Denial of ML Service",
+      "tactic": "Impact",
+      "url": "https://atlas.mitre.org/techniques/AML.T0029",
+      "description": "Rendering AI agent services unavailable through resource exhaustion or overload."
+    },
+    "AML.T0044": {
+      "name": "Full ML Model Access",
+      "tactic": "ML Model Access",
+      "url": "https://atlas.mitre.org/techniques/AML.T0044",
+      "description": "Adversary gains elevated access to the ML model, enabling attacks like extraction or manipulation."
+    },
+    "AML.T0040": {
+      "name": "ML Model Inference API Access",
+      "tactic": "ML Model Access",
+      "url": "https://atlas.mitre.org/techniques/AML.T0040",
+      "description": "Leveraging inference API access for lateral movement through connected AI agent networks."
+    },
+    "AML.T0043": {
+      "name": "Craft Adversarial Data",
+      "tactic": "ML Attack Staging",
+      "url": "https://atlas.mitre.org/techniques/AML.T0043",
+      "description": "Creating specifically crafted data to trigger misclassification or evasion."
+    },
+    "AML.T0047": {
+      "name": "ML-Enabled Product Abuse",
+      "tactic": "Impact",
+      "url": "https://atlas.mitre.org/techniques/AML.T0047",
+      "description": "Abusing AI-enabled product features for unintended malicious purposes."
+    },
+    "AML.T0048": {
+      "name": "Command and Control via AI Agent",
+      "tactic": "Command and Control",
+      "url": "https://atlas.mitre.org/techniques/AML.T0048",
+      "description": "Using compromised AI agents as C2 channels for issuing commands or relaying data."
+    }
+  },
+
+  "rule_mappings": {
+    "prompt_injection_pattern": {
+      "atlas_techniques": ["AML.T0051", "AML.T0051.001"],
+      "confidence": "high",
+      "rationale": "Direct regex-based prompt injection detection"
+    },
+    "high_tool_call_rate": {
+      "atlas_techniques": ["AML.T0029"],
+      "confidence": "high",
+      "rationale": "Resource exhaustion / denial of AI service via excessive tool calls"
+    },
+    "suspicious_network_dest": {
+      "atlas_techniques": ["AML.T0024", "AML.T0025"],
+      "confidence": "medium",
+      "rationale": "Outbound connections to non-private IPs may indicate data exfiltration"
+    },
+    "excessive_file_read": {
+      "atlas_techniques": ["AML.T0025"],
+      "confidence": "medium",
+      "rationale": "Bulk file reads suggest data harvesting for exfiltration"
+    },
+    "credential_in_output": {
+      "atlas_techniques": ["AML.T0025"],
+      "confidence": "high",
+      "rationale": "Credentials in AI output indicate direct data extraction"
+    },
+    "unknown_mcp_server": {
+      "atlas_techniques": ["AML.T0010"],
+      "confidence": "high",
+      "rationale": "Unknown MCP server with code execution capabilities — supply chain risk"
+    },
+    "unusual_process_spawn": {
+      "atlas_techniques": ["AML.T0044", "AML.T0040"],
+      "confidence": "medium",
+      "rationale": "Process spawn from AI agent suggests privilege escalation or lateral movement"
+    },
+    "large_outbound_transfer": {
+      "atlas_techniques": ["AML.T0024", "AML.T0025"],
+      "confidence": "high",
+      "rationale": "High-volume outbound transfer indicates active data exfiltration"
+    },
+    "new_network_connection": {
+      "atlas_techniques": ["AML.T0048"],
+      "confidence": "low",
+      "rationale": "New/suspicious DNS lookup may indicate C2 communication attempt"
+    },
+    "sensitive_file_access": {
+      "atlas_techniques": ["AML.T0025"],
+      "confidence": "high",
+      "rationale": "Access to credential/key files indicates data extraction attempt"
+    },
+    "trust_score_critical_drop": {
+      "atlas_techniques": ["AML.T0043", "AML.T0015"],
+      "confidence": "medium",
+      "rationale": "Sustained trust degradation suggests ongoing adversarial activity or evasion"
+    },
+    "trust_score_low_warning": {
+      "atlas_techniques": ["AML.T0043"],
+      "confidence": "low",
+      "rationale": "Early warning for potential adversarial data crafting"
+    },
+    "adaptive_trust_threshold": {
+      "atlas_techniques": ["AML.T0015", "AML.T0043"],
+      "confidence": "medium",
+      "rationale": "Combined ML anomaly + trust degradation — possible model evasion"
+    },
+    "trust_permission_escalation": {
+      "atlas_techniques": ["AML.T0044", "AML.T0047"],
+      "confidence": "high",
+      "rationale": "Low-trust agent requesting elevated permissions — privilege escalation"
+    },
+    "a2a_deep_delegation_chain": {
+      "atlas_techniques": ["AML.T0048", "AML.T0040"],
+      "confidence": "high",
+      "rationale": "Deep A2A delegation chain can launder intent or evade attribution"
+    },
+    "a2a_circular_delegation": {
+      "atlas_techniques": ["AML.T0048", "AML.T0029"],
+      "confidence": "high",
+      "rationale": "Circular delegation loop may indicate C2 relaying or denial of service"
+    },
+    "a2a_unverified_agent_delegation": {
+      "atlas_techniques": ["AML.T0010", "AML.T0048"],
+      "confidence": "high",
+      "rationale": "Delegation to unverified agent — possible supply chain or impersonation"
+    },
+    "a2a_revoked_agent_contact": {
+      "atlas_techniques": ["AML.T0010", "AML.T0048"],
+      "confidence": "high",
+      "rationale": "Communication with revoked agent — possible compromised identity"
+    },
+    "a2a_protocol_non_conformance": {
+      "atlas_techniques": ["AML.T0015", "AML.T0043"],
+      "confidence": "medium",
+      "rationale": "Protocol non-conformance may indicate evasion or crafted adversarial data"
+    },
+    "recording_downgrade_during_investigation": {
+      "atlas_techniques": ["AML.T0015", "AML.T0047"],
+      "confidence": "high",
+      "rationale": "Recording downgrade during investigation — audit evasion"
+    },
+    "audit_chain_integrity_failure": {
+      "atlas_techniques": ["AML.T0020", "AML.T0047"],
+      "confidence": "high",
+      "rationale": "Tamper-proof chain integrity failure — data integrity compromise"
+    },
+    "legal_hold_bypass_attempt": {
+      "atlas_techniques": ["AML.T0047", "AML.T0044"],
+      "confidence": "high",
+      "rationale": "Legal hold bypass — product abuse / unauthorized access"
+    },
+    "mass_recording_disable": {
+      "atlas_techniques": ["AML.T0015", "AML.T0029"],
+      "confidence": "high",
+      "rationale": "Bulk recording disable — audit evasion or denial of monitoring"
+    },
+    "cross_tenant_replay_attempt": {
+      "atlas_techniques": ["AML.T0044", "AML.T0040"],
+      "confidence": "high",
+      "rationale": "Cross-tenant replay — lateral movement / unauthorized access"
+    },
+    "export_without_verification": {
+      "atlas_techniques": ["AML.T0025", "AML.T0047"],
+      "confidence": "medium",
+      "rationale": "Compliance export without chain verification — data integrity gap"
+    },
+    "mass_ioc_injection": {
+      "atlas_techniques": ["AML.T0020", "AML.T0043"],
+      "confidence": "high",
+      "rationale": "Mass IoC injection — data poisoning / adversarial data crafting"
+    },
+    "unauthorized_feed_modification": {
+      "atlas_techniques": ["AML.T0044", "AML.T0047"],
+      "confidence": "high",
+      "rationale": "Unauthorized feed modification — product abuse / unauthorized access"
+    },
+    "export_to_unknown_destination": {
+      "atlas_techniques": ["AML.T0024", "AML.T0025"],
+      "confidence": "medium",
+      "rationale": "IoC export to unknown destination — data exfiltration risk"
+    },
+    "high_severity_correlation_burst": {
+      "atlas_techniques": ["AML.T0048", "AML.T0043"],
+      "confidence": "high",
+      "rationale": "Multiple critical IoC matches — active attack via AI agent C2"
+    },
+    "stix_import_large_bundle": {
+      "atlas_techniques": ["AML.T0020", "AML.T0029"],
+      "confidence": "medium",
+      "rationale": "Large STIX import — potential data poisoning or resource exhaustion"
+    },
+    "cross_tenant_ioc_leak": {
+      "atlas_techniques": ["AML.T0025", "AML.T0040"],
+      "confidence": "high",
+      "rationale": "Cross-tenant IoC access — data exfiltration / lateral movement"
+    }
+  },
+
+  "ml_model_mappings": {
+    "isolation_forest_anomaly": {
+      "atlas_techniques": ["AML.T0015", "AML.T0043"],
+      "confidence": "medium",
+      "rationale": "IF detects statistical anomalies that may be evasion or adversarial data"
+    },
+    "xgboost_attack_class": {
+      "attack_class_mapping": {
+        "prompt_injection": ["AML.T0051"],
+        "data_theft": ["AML.T0025"],
+        "dos": ["AML.T0029"],
+        "exfiltration": ["AML.T0024", "AML.T0025"],
+        "supply_chain": ["AML.T0010"],
+        "lateral_movement": ["AML.T0040"],
+        "credential_theft": ["AML.T0025"],
+        "privilege_escalation": ["AML.T0044"]
+      },
+      "confidence": "high",
+      "rationale": "XGB multi-class classifier directly maps to attack types → ATLAS techniques"
+    },
+    "autoencoder_anomaly": {
+      "atlas_techniques": ["AML.T0015"],
+      "confidence": "low",
+      "rationale": "AE reconstruction error indicates novel/unseen pattern — possible evasion"
+    }
+  },
+
+  "content_classifier_mappings": {
+    "prompt_injection_regex": {
+      "atlas_techniques": ["AML.T0051", "AML.T0051.001", "AML.T0051.002"],
+      "confidence": "high",
+      "rationale": "41 regex patterns detecting direct and indirect prompt injection"
+    },
+    "exploit_code_scanner": {
+      "atlas_techniques": ["AML.T0044", "AML.T0047"],
+      "confidence": "high",
+      "rationale": "70 exploit patterns across 7 ATT&CK categories"
+    },
+    "data_exfiltration_detector": {
+      "atlas_techniques": ["AML.T0024", "AML.T0025"],
+      "confidence": "medium",
+      "rationale": "Encoding/exfiltration pattern detection in AI outputs"
+    },
+    "secret_detector": {
+      "atlas_techniques": ["AML.T0025"],
+      "confidence": "high",
+      "rationale": "31 secret patterns — credentials in AI output"
+    },
+    "embedding_similarity": {
+      "atlas_techniques": ["AML.T0051", "AML.T0043"],
+      "confidence": "medium",
+      "rationale": "Cosine similarity to known attack corpus"
+    }
+  },
+
+  "attack_class_to_atlas": {
+    "prompt_injection": ["AML.T0051", "AML.T0051.001", "AML.T0051.002"],
+    "dos": ["AML.T0029"],
+    "exfiltration": ["AML.T0024", "AML.T0025"],
+    "credential_theft": ["AML.T0025"],
+    "supply_chain": ["AML.T0010"],
+    "lateral_movement": ["AML.T0040"],
+    "unauthorized_access": ["AML.T0044"],
+    "behavioral_anomaly": ["AML.T0043", "AML.T0048"],
+    "trust_degradation": ["AML.T0015", "AML.T0043"],
+    "privilege_escalation": ["AML.T0044", "AML.T0047"],
+    "data_theft": ["AML.T0025"],
+    "model_evasion": ["AML.T0015"],
+    "data_poisoning": ["AML.T0020"],
+    "delegation_abuse": ["AML.T0048", "AML.T0040"],
+    "impersonation": ["AML.T0010", "AML.T0048"],
+    "evasion": ["AML.T0015", "AML.T0043"],
+    "audit_tampering": ["AML.T0020", "AML.T0047"],
+    "audit_evasion": ["AML.T0015", "AML.T0029"],
+    "tenant_isolation": ["AML.T0044", "AML.T0040"],
+    "compliance_gap": ["AML.T0025", "AML.T0047"],
+    "threat_intel_abuse": ["AML.T0020", "AML.T0043"],
+    "data_exfiltration": ["AML.T0024", "AML.T0025"],
+    "active_attack": ["AML.T0048", "AML.T0043"]
+  }
+}

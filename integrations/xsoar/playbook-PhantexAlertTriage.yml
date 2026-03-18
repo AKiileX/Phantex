@@ -1,0 +1,139 @@
+id: phantex-alert-triage
+version: -1
+name: Phantex Alert Triage
+description: |
+  Automated triage playbook for Phantex alerts.
+  
+  Flow:
+  1. Fetch alert enrichment (agent context, trust score, ATLAS mapping)
+  2. Check trust score threshold
+  3. If trust < 30: auto-isolate agent + escalate
+  4. If trust < 60: escalate for manual review
+  5. If trust >= 60: auto-acknowledge low/medium severity
+  
+  Requires: Phantex integration configured with actions.execute scope.
+
+starttaskid: "0"
+tasks:
+  "0":
+    id: "0"
+    taskid: start
+    type: start
+    nexttasks:
+      '#none#':
+        - "1"
+
+  "1":
+    id: "1"
+    taskid: enrich-alert
+    type: regular
+    task:
+      id: enrich
+      brand: Phantex
+      script: phantex-enrich-alert
+      args:
+        alert_id: ${incident.rawJSON.id}
+    nexttasks:
+      '#none#':
+        - "2"
+
+  "2":
+    id: "2"
+    taskid: check-trust
+    type: condition
+    task:
+      id: trust-check
+      description: "Check agent trust score"
+    conditions:
+      - label: "Critical (trust < 30)"
+        condition:
+          - - operator: isLessThan
+              left:
+                value: ${Phantex.Enrichment.agent_trust_score}
+                iscontext: true
+              right:
+                value: "30"
+      - label: "Suspicious (trust < 60)"
+        condition:
+          - - operator: isLessThan
+              left:
+                value: ${Phantex.Enrichment.agent_trust_score}
+                iscontext: true
+              right:
+                value: "60"
+      - label: "Normal"
+    nexttasks:
+      "Critical (trust < 30)":
+        - "3"
+      "Suspicious (trust < 60)":
+        - "4"
+      "Normal":
+        - "5"
+
+  "3":
+    id: "3"
+    taskid: isolate-and-escalate
+    type: regular
+    task:
+      id: isolate
+      brand: Phantex
+      script: phantex-isolate-agent
+      args:
+        agent_id: ${Phantex.Enrichment.agent_id}
+        reason: "Auto-triage: trust score ${Phantex.Enrichment.agent_trust_score} < 30"
+    nexttasks:
+      '#none#':
+        - "3b"
+
+  "3b":
+    id: "3b"
+    taskid: escalate-critical
+    type: regular
+    task:
+      id: escalate
+      brand: Phantex
+      script: phantex-escalate-alert
+      args:
+        alert_id: ${incident.rawJSON.id}
+        reason: "Critical: agent isolated, trust=${Phantex.Enrichment.agent_trust_score}"
+    nexttasks:
+      '#none#':
+        - "6"
+
+  "4":
+    id: "4"
+    taskid: escalate-suspicious
+    type: regular
+    task:
+      id: escalate-sus
+      brand: Phantex
+      script: phantex-escalate-alert
+      args:
+        alert_id: ${incident.rawJSON.id}
+        reason: "Suspicious: trust=${Phantex.Enrichment.agent_trust_score}, needs manual review"
+    nexttasks:
+      '#none#':
+        - "6"
+
+  "5":
+    id: "5"
+    taskid: auto-ack
+    type: regular
+    task:
+      id: ack
+      brand: Phantex
+      script: phantex-acknowledge-alert
+      args:
+        alert_id: ${incident.rawJSON.id}
+        reason: "Auto-triage: trust=${Phantex.Enrichment.agent_trust_score}, low risk"
+    nexttasks:
+      '#none#':
+        - "6"
+
+  "6":
+    id: "6"
+    taskid: done
+    type: title
+    task:
+      id: complete
+      description: "Triage complete"

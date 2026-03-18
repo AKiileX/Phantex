@@ -1,0 +1,215 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025-2026 The Phantex Authors
+
+// Phantex internal API — service-to-service gRPC for backend components.
+//
+// This service is NOT exposed to sensors. It's used for:
+//   - Dashboard → Backend queries (get events, agents, alerts)
+//   - Rule Engine → Alert dispatch
+//   - Storage Writer → Event persistence acknowledgment
+//
+// In Phase 1, this is a stub. Full implementation comes in Blocks D-F.
+syntax = "proto3";
+
+package phantex.v1;
+
+option go_package = "phantex/v1";
+
+import "phantex/v1/events.proto";
+import "google/protobuf/timestamp.proto";
+
+// ─── Event Query Service ───────────────────────────────────────────────────────
+
+// EventQueryService provides read access to stored events.
+// Used by the dashboard API and rule engine
+service EventQueryService {
+  // GetEvents returns events matching the query criteria.
+  rpc GetEvents(GetEventsRequest) returns (GetEventsResponse);
+
+  // StreamEvents opens a real-time event stream (for live dashboard).
+  rpc StreamEvents(StreamEventsRequest) returns (stream StreamEventsResponse);
+
+  // GetEventByID returns a single event by its ID.
+  rpc GetEventByID(GetEventByIDRequest) returns (GetEventByIDResponse);
+}
+
+// ─── Agent Query Service ───────────────────────────────────────────────────────
+
+// AgentQueryService provides read access to discovered AI agents.
+service AgentQueryService {
+  // ListAgents returns all currently tracked agents for a tenant.
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+
+  // GetAgent returns details for a specific agent by PAID.
+  rpc GetAgent(GetAgentRequest) returns (GetAgentResponse);
+
+  // GetAgentTimeline returns the event history for an agent.
+  rpc GetAgentTimeline(GetAgentTimelineRequest) returns (GetAgentTimelineResponse);
+}
+
+// ─── Alert Service ─────────────────────────────────────────────────────────────
+
+// AlertService manages security alerts fired by the rule engine.
+service AlertService {
+  // ListAlerts returns alerts matching criteria.
+  rpc ListAlerts(ListAlertsRequest) returns (ListAlertsResponse);
+
+  // AcknowledgeAlert marks an alert as reviewed.
+  rpc AcknowledgeAlert(AcknowledgeAlertRequest) returns (AcknowledgeAlertResponse);
+}
+
+// ─── Request/Response Messages ─────────────────────────────────────────────────
+
+// Event queries
+
+message GetEventsRequest {
+  string tenant_id = 1;
+  string agent_id  = 2;   // filter by PAID (optional)
+  repeated EventType event_types = 3;  // filter by types (optional)
+  google.protobuf.Timestamp start_time = 4;
+  google.protobuf.Timestamp end_time   = 5;
+  uint32 limit  = 6;  // max results (default 100, max 10000)
+  string cursor = 7;  // pagination cursor
+}
+
+message GetEventsResponse {
+  repeated PhantexEvent events = 1;
+  string next_cursor = 2;  // empty if no more results
+  uint64 total_count = 3;  // approximate total matching events
+}
+
+message StreamEventsRequest {
+  string tenant_id = 1;
+  string agent_id  = 2;   // optional: stream events for one agent only
+  repeated EventType event_types = 3;  // optional filter
+}
+
+message GetEventByIDRequest {
+  string tenant_id = 1;
+  string event_id  = 2;
+}
+
+// StreamEventsResponse wraps a single event in the real-time stream.
+message StreamEventsResponse {
+  PhantexEvent event = 1;
+}
+
+// GetEventByIDResponse wraps a single event lookup result.
+message GetEventByIDResponse {
+  PhantexEvent event = 1;
+}
+
+// Agent queries
+
+message ListAgentsRequest {
+  string tenant_id = 1;
+  bool   active_only = 2;  // only currently running agents
+  string framework = 3;    // filter by framework (optional)
+  uint32 limit  = 4;
+  string cursor = 5;
+}
+
+message ListAgentsResponse {
+  repeated AgentInfo agents = 1;
+  string next_cursor = 2;
+  uint64 total_count = 3;
+}
+
+message GetAgentRequest {
+  string tenant_id = 1;
+  string paid      = 2;
+}
+
+// GetAgentResponse wraps agent details.
+message GetAgentResponse {
+  AgentInfo agent = 1;
+}
+
+message GetAgentTimelineRequest {
+  string tenant_id = 1;
+  string paid      = 2;
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Timestamp end_time   = 4;
+  uint32 limit = 5;
+  string cursor = 6;
+}
+
+message GetAgentTimelineResponse {
+  repeated PhantexEvent events = 1;
+  string next_cursor = 2;
+}
+
+// AgentInfo is the detailed view of a discovered AI agent.
+message AgentInfo {
+  string paid        = 1;
+  string framework   = 2;
+  string confidence  = 3;
+  uint32 pid         = 4;
+  string exe_path    = 5;
+  string cmdline     = 6;
+  string container_id = 7;
+  string hostname    = 8;
+  string sensor_id   = 9;
+  bool   active      = 10;
+  google.protobuf.Timestamp discovered_at  = 11;
+  google.protobuf.Timestamp terminated_at  = 12;  // zero if still active
+
+  // Summary stats for this agent
+  AgentStats stats = 15;
+}
+
+// AgentStats summarizes an agent's activity.
+message AgentStats {
+  uint64 total_events     = 1;
+  uint64 file_events      = 2;
+  uint64 network_events   = 3;
+  uint64 tool_calls       = 4;
+  uint64 alerts_fired     = 5;
+}
+
+// Alert queries
+
+message ListAlertsRequest {
+  string tenant_id = 1;
+  string agent_id  = 2;   // filter by PAID (optional)
+  repeated Severity severities = 3;
+  bool acknowledged = 4;   // filter acknowledged/unacked
+  google.protobuf.Timestamp start_time = 5;
+  google.protobuf.Timestamp end_time   = 6;
+  uint32 limit  = 7;
+  string cursor = 8;
+}
+
+message ListAlertsResponse {
+  repeated AlertDetail alerts = 1;
+  string next_cursor = 2;
+  uint64 total_count = 3;
+}
+
+// AlertDetail is the full alert view including enrichment.
+message AlertDetail {
+  string alert_id    = 1;
+  string rule_id     = 2;
+  string rule_name   = 3;
+  Severity severity  = 4;
+  string description = 5;
+  string agent_paid  = 6;
+  string tenant_id   = 7;
+  bool   acknowledged = 8;
+  string acknowledged_by = 9;
+  google.protobuf.Timestamp fired_at = 10;
+  google.protobuf.Timestamp acknowledged_at = 11;
+  repeated string trigger_event_ids = 12;
+  map<string, string> evidence = 13;
+}
+
+message AcknowledgeAlertRequest {
+  string tenant_id = 1;
+  string alert_id  = 2;
+  string user_id   = 3;   // who acknowledged
+  string comment   = 4;   // optional note
+}
+
+message AcknowledgeAlertResponse {
+  bool success = 1;
+}

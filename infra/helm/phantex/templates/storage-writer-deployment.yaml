@@ -1,0 +1,97 @@
+# Phantex Storage Writer — Deployment (Kafka consumer → PG/CH/Neo4j)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "phantex.fullname" . }}-storage-writer
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage-writer
+spec:
+  replicas: {{ .Values.storageWriter.replicas }}
+  selector:
+    matchLabels:
+      {{- include "phantex.selectorLabels" (dict "name" "phantex-storage-writer" "release" .Release.Name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "phantex.selectorLabels" (dict "name" "phantex-storage-writer" "release" .Release.Name) | nindent 8 }}
+        app.kubernetes.io/component: storage-writer
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "phantex.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.storageWriter.terminationGracePeriodSeconds | default 60 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: storage-writer
+          image: {{ include "phantex.image" (dict "global" .Values.global "image" .Values.storageWriter.image "appVersion" .Chart.AppVersion) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command: ["python", "-m", "app.main_consumer"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: PHANTEX_ENVIRONMENT
+              value: {{ .Values.backend.env.PHANTEX_ENVIRONMENT | default "production" | quote }}
+            # ── PostgreSQL ──
+            - name: PHANTEX_DB_HOST
+              value: {{ .Values.postgresql.host | quote }}
+            - name: PHANTEX_DB_PORT
+              value: {{ .Values.postgresql.port | default 5432 | quote }}
+            - name: PHANTEX_DB_NAME
+              value: {{ .Values.postgresql.database | quote }}
+            - name: PHANTEX_DB_USER
+              value: {{ .Values.postgresql.username | quote }}
+            - name: PHANTEX_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.existingSecret }}
+                  key: {{ .Values.postgresql.existingSecretKey }}
+            # ── Kafka ──
+            - name: PHANTEX_KAFKA_BOOTSTRAP
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            # ── ClickHouse ──
+            {{- if .Values.clickhouse.host }}
+            - name: PHANTEX_CLICKHOUSE_HOST
+              value: {{ .Values.clickhouse.host | quote }}
+            - name: PHANTEX_CLICKHOUSE_PORT
+              value: {{ .Values.clickhouse.httpPort | default 8123 | quote }}
+            - name: PHANTEX_CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.clickhouse.existingSecret }}
+                  key: {{ .Values.clickhouse.existingSecretKey }}
+            {{- end }}
+            # ── Neo4j ──
+            {{- if .Values.neo4j.uri }}
+            - name: PHANTEX_NEO4J_URI
+              value: {{ .Values.neo4j.uri | quote }}
+            - name: PHANTEX_NEO4J_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.neo4j.existingSecret }}
+                  key: {{ .Values.neo4j.existingSecretKey }}
+            {{- end }}
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import os; os.path.exists('/proc/1/status') or exit(1)"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.storageWriter.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

@@ -1,0 +1,13 @@
+# Rule: high_tool_call_rate
+# Category: DoS / Runaway Agent Protection
+# Severity: high
+# Attack Class: dos
+#
+# Detects agents making an excessive number of tool calls in a short window.
+# This may indicate a runaway agent stuck in a loop, a prompt injection causing
+# repeated tool invocations, or an intentional denial-of-service attack.
+#
+# Threshold: more than 100 tool calls within a 60-second sliding window.
+# Tune this per environment — legitimate data-processing agents may hit higher rates.
+
+event.type == "TOOL_CALL" AND count("TOOL_CALL", "60s") > 100

@@ -1,0 +1,54 @@
+<!-- Phantex ClickHouse configuration overlay -->
+<clickhouse>
+    <!-- Memory limits -->
+    <max_server_memory_usage_to_ram_ratio>0.8</max_server_memory_usage_to_ram_ratio>
+
+    <!-- Merge tree settings -->
+    <merge_tree>
+        <max_bytes_to_merge_at_max_space_in_pool>5368709120</max_bytes_to_merge_at_max_space_in_pool>
+        <min_bytes_for_wide_part>10485760</min_bytes_for_wide_part>
+    </merge_tree>
+
+    <!-- Logging -->
+    <logger>
+        <level>warning</level>
+        <console>1</console>
+    </logger>
+
+    <!-- Listen on all interfaces inside container -->
+    <listen_host>0.0.0.0</listen_host>
+
+    <!-- Disable inter-server TLS in dev (single node) -->
+    <interserver_http_port>9009</interserver_http_port>
+
+    <!-- Query complexity limits -->
+    <profiles>
+        <default>
+            <max_memory_usage>2000000000</max_memory_usage>
+            <max_execution_time>30</max_execution_time>
+            <max_rows_to_read>1000000000</max_rows_to_read>
+            <max_result_rows>100000</max_result_rows>
+        </default>
+        <readonly>
+            <readonly>1</readonly>
+            <max_execution_time>30</max_execution_time>
+            <max_rows_to_read>1000000000</max_rows_to_read>
+            <max_result_rows>100000</max_result_rows>
+        </readonly>
+    </profiles>
+
+    <!-- Users: app (readonly) and admin (full) -->
+    <users>
+        <phantex_app>
+            <password_sha256_hex replace="true"></password_sha256_hex>
+            <profile>readonly</profile>
+            <quota>default</quota>
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            <databases>
+                <phantex/>
+            </databases>
+        </phantex_app>
+    </users>
+</clickhouse>

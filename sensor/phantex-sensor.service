@@ -1,0 +1,45 @@
+[Unit]
+Description=Phantex AI Agent Sensor
+Documentation=https://github.com/AKiileX/Phantex
+After=network.target
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/rm -f /run/phantex/sdk.sock
+ExecStart=/usr/local/bin/phantex-sensor --config /etc/phantex/sensor.yaml
+Restart=always
+RestartSec=5
+
+# ── Security hardening ────────────────────────────────────────────────────────
+# Minimum capabilities for eBPF operation (no full root)
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_NET_ADMIN CAP_SYS_PTRACE
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_NET_ADMIN CAP_SYS_PTRACE
+NoNewPrivileges=yes
+
+# Filesystem protection
+ProtectSystem=strict
+ReadWritePaths=/sys/fs/bpf /var/log/phantex
+RuntimeDirectory=phantex
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=no
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelModules=yes
+ProtectClock=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+SystemCallFilter=~@reboot @swap @obsolete
+MemoryDenyWriteExecute=no
+
+# Must run as root for eBPF
+User=root
+Group=root
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=phantex-sensor
+
+[Install]
+WantedBy=multi-user.target

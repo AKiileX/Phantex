@@ -1,0 +1,262 @@
+# Phantex — Production Override (single-machine / on-prem / lab)
+#
+# This file overrides docker-compose.dev.yml with production settings.
+# It does NOT stand alone — it layers on top of the dev file.
+#
+# Usage:
+#   1. cp .env.production.example .env.production
+#   2. Edit .env.production with real secrets
+#   3. docker compose -f docker-compose.dev.yml -f docker-compose.prod.yml \
+#        --env-file .env.production up -d
+#
+# What this changes from dev:
+#   - PHANTEX_ENVIRONMENT → production (activates startup validators)
+#   - Debug OFF, SQL echo OFF, hot-reload OFF
+#   - Redis requires password
+#   - No source-code bind mounts (uses baked-in image code)
+#   - Uvicorn runs with production workers (no --reload)
+#   - ML dev mode disabled
+#   - Kafka UI and simulator excluded
+#   - WebSocket legacy token auth disabled
+#   - restart: always (auto-recover after host reboot)
+
+services:
+  # ── PostgreSQL — same image, stronger passwords via .env.production ────────
+  postgres:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "2.0"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+      PHANTEX_ENVIRONMENT: production
+
+  # ── Kafka — production restart policy ──────────────────────────────────────
+  kafka:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "2.0"
+    environment:
+      # Override PLAINTEXT → SASL_SSL for inter-broker and external listeners
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >-
+        INTERNAL:${KAFKA_SECURITY_PROTOCOL:-PLAINTEXT},HOST:${KAFKA_SECURITY_PROTOCOL:-PLAINTEXT},CONTROLLER:PLAINTEXT
+      # TLS / SASL_SSL settings (set in .env.production for encrypted Kafka)
+      KAFKA_SSL_KEYSTORE_LOCATION: ${KAFKA_SSL_KEYSTORE_LOCATION:-}
+      KAFKA_SSL_KEYSTORE_PASSWORD: ${KAFKA_SSL_KEYSTORE_PASSWORD:-}
+      KAFKA_SSL_TRUSTSTORE_LOCATION: ${KAFKA_SSL_TRUSTSTORE_LOCATION:-}
+      KAFKA_SSL_TRUSTSTORE_PASSWORD: ${KAFKA_SSL_TRUSTSTORE_PASSWORD:-}
+    volumes:
+      - phantex-kafka-data:/var/lib/kafka/data
+      - ${KAFKA_TLS_CERTS_DIR:-./infra/tls}:/etc/kafka/tls:ro
+
+  # ── Kafka UI — DISABLED in production (no web UI for Kafka) ────────────────
+  kafka-ui:
+    profiles:
+      - never           # effectively disables this service
+
+  # ── Redis — require password ───────────────────────────────────────────────
+  redis:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+    command:
+      - "redis-server"
+      - "--maxmemory"
+      - "256mb"
+      - "--maxmemory-policy"
+      - "allkeys-lru"
+      - "--appendonly"
+      - "yes"
+      - "--requirepass"
+      - "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.production}"
+
+  # ── ClickHouse — stronger password via .env.production ─────────────────────
+  clickhouse:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "2.0"
+    environment:
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in .env.production}
+
+  # ── Neo4j — stronger password via .env.production ──────────────────────────
+  neo4j:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:?Set NEO4J_PASSWORD in .env.production}
+
+  # ── Backend API — production mode ──────────────────────────────────────────
+  phantex-backend:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+    # Remove dev bind mounts — use code baked into the image
+    volumes:
+      - ./verification:/app/verification:ro
+      - ${JWT_KEYS_DIR:-./infra/tls}:/etc/phantex/keys:ro
+    environment:
+      PHANTEX_ENVIRONMENT: production
+      PHANTEX_DEBUG: "false"
+      PHANTEX_ML_DEV_MODE: "false"
+      PHANTEX_DB_ECHO_SQL: "false"
+      PHANTEX_DB_PASSWORD: ${PHANTEX_DB_PASSWORD:?Set PHANTEX_DB_PASSWORD in .env.production}
+      PHANTEX_DB_ADMIN_PASSWORD: ${PHANTEX_DB_ADMIN_PASSWORD:-${POSTGRES_PASSWORD}}
+      PHANTEX_JWT_SECRET: ${PHANTEX_JWT_SECRET:?Set PHANTEX_JWT_SECRET in .env.production}
+      PHANTEX_JWT_ALGORITHM: ${PHANTEX_JWT_ALGORITHM:-RS256}
+      PHANTEX_JWT_PRIVATE_KEY_FILE: ${PHANTEX_JWT_PRIVATE_KEY_FILE:-/etc/phantex/keys/jwt-private.pem}
+      PHANTEX_JWT_PUBLIC_KEY_FILE: ${PHANTEX_JWT_PUBLIC_KEY_FILE:-/etc/phantex/keys/jwt-public.pem}
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+      PHANTEX_CORS_ORIGINS: ${PHANTEX_CORS_ORIGINS:?Set PHANTEX_CORS_ORIGINS in .env.production}
+      PHANTEX_DB_SSL_MODE: ${PHANTEX_DB_SSL_MODE:-require}
+      PHANTEX_WS_LEGACY_TOKEN_ENABLED: "false"
+      PHANTEX_INTERNAL_TOKEN: ${PHANTEX_INTERNAL_TOKEN:?Set PHANTEX_INTERNAL_TOKEN in .env.production}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+    # Production uvicorn: no reload, multiple workers
+    command:
+      - "uvicorn"
+      - "app.main:app"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--workers"
+      - "4"
+      - "--proxy-headers"
+      - "--forwarded-allow-ips"
+      - "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+      - "--no-server-header"
+
+  # ── Gateway — production token + TLS ────────────────────────────────────────
+  phantex-gateway:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "1.0"
+    environment:
+      PHANTEX_ENVIRONMENT: production
+      PHANTEX_INTERNAL_TOKEN: ${PHANTEX_INTERNAL_TOKEN}
+    volumes:
+      - ./gateway/gateway.yaml:/etc/phantex/gateway.yaml:ro
+      - ${GATEWAY_TLS_CERTS_DIR:-./infra/tls}:/etc/phantex/tls:ro
+
+  # ── Storage Writer — production mode ───────────────────────────────────────
+  phantex-storage-writer:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+    # Remove dev bind mounts
+    volumes: []
+    environment:
+      PHANTEX_ENVIRONMENT: production
+      PHANTEX_ML_DEV_MODE: "false"
+      PHANTEX_DB_PASSWORD: ${PHANTEX_DB_PASSWORD}
+      PHANTEX_DB_ADMIN_PASSWORD: ${PHANTEX_DB_ADMIN_PASSWORD:-${POSTGRES_PASSWORD}}
+      PHANTEX_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      PHANTEX_NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+
+  # ── Dashboard — same image, no changes needed ─────────────────────────────
+  phantex-dashboard:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.5"
+
+  # ── Trust Engine — production restart ──────────────────────────────────────
+  phantex-trust-engine:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "1.0"
+
+  # ── Rule Engine — production mode ──────────────────────────────────────────
+  phantex-rule-engine:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+    environment:
+      PHANTEX_ENVIRONMENT: production
+      PHANTEX_DB_PASSWORD: ${PHANTEX_DB_PASSWORD}
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+
+  # ── ML Workers — production mode ───────────────────────────────────────────
+  phantex-ml-features:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+    environment:
+      PHANTEX_ENVIRONMENT: production
+      PHANTEX_ML_DEV_MODE: "false"
+      PHANTEX_DB_PASSWORD: ${PHANTEX_DB_PASSWORD}
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+
+  phantex-ml-inference:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+    environment:
+      PHANTEX_ENVIRONMENT: production
+      PHANTEX_ML_DEV_MODE: "false"
+      PHANTEX_DB_PASSWORD: ${PHANTEX_DB_PASSWORD}
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+
+  phantex-ml-baseline:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+    environment:
+      PHANTEX_ENVIRONMENT: production
+      PHANTEX_ML_DEV_MODE: "false"
+      PHANTEX_DB_PASSWORD: ${PHANTEX_DB_PASSWORD}
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
+
+  phantex-ml-content:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+    environment:
+      PHANTEX_ENVIRONMENT: production
+      PHANTEX_ML_DEV_MODE: "false"
+      PHANTEX_REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"

@@ -1,0 +1,303 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025-2026 The Phantex Authors
+
+// Phantex event schema — canonical event format used everywhere:
+// sensor → gateway → Kafka → storage → analytics → API
+//
+// Design principles:
+//   - Every event has a common envelope (PhantexEvent) for routing/indexing.
+//   - Type-specific payloads use oneof for zero-cost when unused.
+//   - tenant_id is ALWAYS present — prevents cross-tenant leakage.
+//   - No plaintext secrets or raw payload content by design.
+//   - Enum values match the eBPF EventType constants for straight-through mapping.
+syntax = "proto3";
+
+package phantex.v1;
+
+option go_package = "phantex/v1";
+
+import "google/protobuf/timestamp.proto";
+
+// ─── Core Event Envelope ───────────────────────────────────────────────────────
+
+// PhantexEvent is the canonical event wrapper used across the entire pipeline.
+// Every event — whether from eBPF, agent discovery, or the rule engine — is
+// wrapped in this envelope for routing, indexing, and tenant isolation.
+message PhantexEvent {
+  // UUID v7 (time-ordered) for global dedup and ordering.
+  string event_id = 1;
+
+  // Customer tenant ID. REQUIRED on every event — enforced at gateway ingestion.
+  string tenant_id = 2;
+
+  // Phantex Agent ID (PAID). Empty for events from non-agent processes.
+  string agent_id = 3;
+
+  // Sensor instance that captured this event.
+  string sensor_id = 4;
+
+  // When the event occurred (kernel timestamp for eBPF events).
+  google.protobuf.Timestamp timestamp = 5;
+
+  // Discriminator for the payload oneof.
+  EventType event_type = 6;
+
+  // Severity level (populated by rule engine for alerts, INFO for raw events).
+  Severity severity = 7;
+
+  // Type-specific payload.
+  oneof payload {
+    ProcessExecEvent   process_exec   = 10;
+    ProcessExitEvent   process_exit   = 11;
+    FileEvent          file           = 12;
+    NetworkEvent       network        = 13;
+    MemoryEvent        memory         = 14;
+    DNSEvent           dns            = 15;
+    ToolCallEvent      tool_call      = 20;
+    ToolResponseEvent  tool_response  = 21;
+    AgentLifecycleEvent lifecycle     = 30;
+    AlertEvent         alert          = 40;
+  }
+}
+
+// ─── Enums ─────────────────────────────────────────────────────────────────────
+
+// EventType discriminates the payload. Values are grouped by category and match
+// the eBPF-side EventType constants (0-2 = process, 10-12 = file, 20-22 = network,
+// 30 = memory, 40-41 = agent, 50-51 = tool call, 60 = alert).
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+
+  // Process events (from execve/exit eBPF probes)
+  EVENT_TYPE_PROCESS_EXEC          = 1;
+  EVENT_TYPE_PROCESS_EXIT          = 2;
+
+  // File events (from openat/read/write eBPF probes)
+  EVENT_TYPE_FILE_OPEN             = 10;
+  EVENT_TYPE_FILE_WRITE            = 11;
+  EVENT_TYPE_FILE_READ             = 12;
+
+  // Network events (from tcp_connect/accept eBPF probes)
+  EVENT_TYPE_NETWORK_CONNECT       = 20;
+  EVENT_TYPE_NETWORK_ACCEPT        = 21;
+  EVENT_TYPE_NETWORK_DNS           = 22;
+
+  // Memory events (from mmap eBPF probe)
+  EVENT_TYPE_MEMORY_MMAP           = 30;
+
+  // Agent lifecycle events (from discovery scanner)
+  EVENT_TYPE_AGENT_DISCOVERED      = 40;
+  EVENT_TYPE_AGENT_TERMINATED      = 41;
+
+  // Tool call events (future: MCP/function-call interception)
+  EVENT_TYPE_TOOL_CALL             = 50;
+  EVENT_TYPE_TOOL_RESPONSE         = 51;
+
+  // Alert events (from rule/policy engine)
+  EVENT_TYPE_ALERT_FIRED           = 60;
+}
+
+// Severity levels for events and alerts.
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  SEVERITY_INFO        = 1;
+  SEVERITY_LOW         = 2;
+  SEVERITY_MEDIUM      = 3;
+  SEVERITY_HIGH        = 4;
+  SEVERITY_CRITICAL    = 5;
+}
+
+// ─── Process Events ────────────────────────────────────────────────────────────
+
+// ProcessExecEvent is emitted when a new process is created (execve syscall).
+message ProcessExecEvent {
+  uint32 pid       = 1;
+  uint32 ppid      = 2;
+  uint32 uid       = 3;
+  uint32 gid       = 4;
+  string comm      = 5;   // short name (16 chars max, from task_struct)
+  string filename  = 6;   // binary path
+  string argv      = 7;   // space-joined arguments
+  string cgroup    = 8;   // cgroup path (for container ID extraction)
+
+  // Enrichment fields (populated by userspace enricher)
+  ProcessContext context = 15;
+}
+
+// ProcessExitEvent is emitted when a process exits.
+message ProcessExitEvent {
+  uint32 pid       = 1;
+  uint32 ppid      = 2;
+  uint32 uid       = 3;
+  uint32 gid       = 4;
+  string comm      = 5;
+  int32  exit_code = 6;
+  uint64 duration_ns = 7;  // process lifetime in nanoseconds
+
+  ProcessContext context = 15;
+}
+
+// ProcessContext holds enriched metadata added in userspace (from /proc).
+message ProcessContext {
+  string exe_path      = 1;  // resolved binary path
+  string container_id  = 2;  // 64-char hex container ID (empty if bare-metal)
+  string cgroup_path   = 3;  // full cgroup path
+  string agent_paid    = 4;  // PAID if process belongs to a tracked AI agent
+  string hostname      = 5;  // machine hostname
+}
+
+// ─── File Events ───────────────────────────────────────────────────────────────
+
+// FileEvent covers open, read, and write file operations.
+message FileEvent {
+  // Which file operation triggered this event.
+  FileOperation operation = 1;
+
+  uint32 pid      = 2;
+  uint32 uid      = 3;
+  string comm     = 4;
+  string filename = 5;    // file path being accessed
+  int32  flags    = 6;    // open flags (O_RDONLY, O_WRONLY, etc.)
+  int64  bytes    = 7;    // bytes read/written (0 for open events)
+  int32  fd       = 8;    // file descriptor
+
+  ProcessContext context = 15;
+}
+
+// FileOperation distinguishes file event subtypes.
+enum FileOperation {
+  FILE_OPERATION_UNSPECIFIED = 0;
+  FILE_OPERATION_OPEN        = 1;
+  FILE_OPERATION_READ        = 2;
+  FILE_OPERATION_WRITE       = 3;
+}
+
+// ─── Network Events ────────────────────────────────────────────────────────────
+
+// NetworkEvent covers TCP connect and accept operations.
+message NetworkEvent {
+  // Which network operation triggered this event.
+  NetworkOperation operation = 1;
+
+  uint32 pid       = 2;
+  string comm      = 3;
+
+  // Source endpoint
+  string src_addr  = 4;   // IP address (v4 or v6)
+  uint32 src_port  = 5;
+
+  // Destination endpoint
+  string dst_addr  = 6;
+  uint32 dst_port  = 7;
+
+  // IP protocol (6 = TCP, 17 = UDP)
+  uint32 protocol  = 8;
+
+  // Address family (AF_INET = 2, AF_INET6 = 10)
+  uint32 family    = 9;
+
+  ProcessContext context = 15;
+}
+
+// NetworkOperation distinguishes network event subtypes.
+enum NetworkOperation {
+  NETWORK_OPERATION_UNSPECIFIED = 0;
+  NETWORK_OPERATION_CONNECT     = 1;
+  NETWORK_OPERATION_ACCEPT      = 2;
+}
+
+// ─── DNS Events ────────────────────────────────────────────────────────────────
+
+// DNSEvent is emitted when a process sends a DNS query (port 53 interception).
+message DNSEvent {
+  uint32 pid        = 1;
+  string comm       = 2;
+  string query_name = 3;   // e.g. "api.openai.com"
+  uint32 query_type = 4;   // DNS record type (1=A, 28=AAAA, 5=CNAME, ...)
+  string dst_addr   = 5;   // DNS server IP
+  uint32 dst_port   = 6;   // DNS server port (usually 53)
+
+  ProcessContext context = 15;
+}
+
+// ─── Memory Events ─────────────────────────────────────────────────────────────
+
+// MemoryEvent is emitted for suspicious mmap operations (PROT_EXEC).
+message MemoryEvent {
+  uint32 pid    = 1;
+  string comm   = 2;
+  uint64 addr   = 3;   // mmap address
+  uint64 length = 4;   // mapping size
+  int32  prot   = 5;   // protection flags (PROT_READ|PROT_WRITE|PROT_EXEC)
+  int32  flags  = 6;   // MAP_PRIVATE, MAP_ANONYMOUS, etc.
+
+  ProcessContext context = 15;
+}
+
+// ─── Tool Call Events (Future: MCP Interception) ───────────────────────────────
+
+// ToolCallEvent captures an AI agent invoking a tool/function.
+// In Phase 1 these are inferred from syscall patterns.
+// In later phases, MCP protocol inspection will capture them directly.
+message ToolCallEvent {
+  uint32 pid         = 1;
+  string agent_paid  = 2;   // which AI agent made the call
+  string tool_name   = 3;   // e.g. "file_read", "web_search", "sql_query"
+  string tool_input  = 4;   // serialized input (redacted if sensitive)
+  string protocol    = 5;   // "mcp", "function_calling", "langchain_tool", etc.
+
+  ProcessContext context = 15;
+}
+
+// ToolResponseEvent captures the result of a tool invocation.
+message ToolResponseEvent {
+  uint32 pid         = 1;
+  string agent_paid  = 2;
+  string tool_name   = 3;
+  bool   success     = 4;
+  int64  duration_ns = 5;   // how long the tool call took
+  int64  output_size = 6;   // response size in bytes (content NOT captured)
+
+  ProcessContext context = 15;
+}
+
+// ─── Agent Lifecycle Events ────────────────────────────────────────────────────
+
+// AgentLifecycleEvent is emitted when an AI agent is discovered or terminated.
+message AgentLifecycleEvent {
+  AgentLifecycleAction action = 1;
+
+  uint32 pid        = 2;
+  string paid       = 3;   // Phantex Agent ID
+  string framework  = 4;   // e.g. "langchain", "autogen", "crewai"
+  string confidence = 5;   // "high", "medium", "low"
+  string exe_path   = 6;   // binary path
+  string cmdline    = 7;   // full command line
+  string container_id = 8;
+}
+
+// AgentLifecycleAction distinguishes discovery from termination.
+enum AgentLifecycleAction {
+  AGENT_LIFECYCLE_ACTION_UNSPECIFIED = 0;
+  AGENT_LIFECYCLE_ACTION_DISCOVERED  = 1;
+  AGENT_LIFECYCLE_ACTION_TERMINATED  = 2;
+}
+
+// ─── Alert Events ──────────────────────────────────────────────────────────────
+
+// AlertEvent is emitted when a policy/rule fires (from the analytics engine).
+message AlertEvent {
+  string alert_id    = 1;  // unique alert ID
+  string rule_id     = 2;  // which rule triggered
+  string rule_name   = 3;  // human-readable rule name
+  Severity severity  = 4;
+  string description = 5;  // what happened
+  string agent_paid  = 6;  // which agent triggered the alert (if applicable)
+  uint32 pid         = 7;
+
+  // The event(s) that triggered this alert
+  repeated string trigger_event_ids = 10;
+
+  // Key-value evidence from the rule evaluation
+  map<string, string> evidence = 11;
+}

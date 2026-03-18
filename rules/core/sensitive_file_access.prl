@@ -1,0 +1,35 @@
+# Rule: sensitive_file_access
+# Category: Unauthorized Access
+# Severity: high
+# Attack Class: unauthorized_access
+#
+# Detects file open operations on sensitive system files and credential stores.
+# Agents should not normally access password files, SSH keys, private keys,
+# or cloud credential files.
+#
+# Paths matched:
+#   - /etc/shadow, /etc/passwd, /etc/sudoers
+#   - Private keys (*.key, *.p12, *.pfx, *.jks, id_rsa, id_ed25519, id_ecdsa)
+#   - AWS credentials (~/.aws/credentials)
+#   - Kubernetes configs (kubeconfig)
+#   - Docker configs (.docker/config.json)
+#   - GCP service accounts
+#   - .env files (commonly contain credentials)
+#
+# Normal AI agent operations are filtered out via TWO mechanisms:
+#   1. allowed_file_paths allowlist — TLS cert dirs, model caches, stdlib.
+#      Operators extend this via the dashboard without touching rule files.
+#   2. allowed_process_comms allowlist — known AI runtime binaries
+#      (ollama, python, vllm, etc.) are excluded from lateral movement,
+#      not from this rule (file access by a known binary to a sensitive
+#      path IS still worth alerting on).
+#
+# Container runtime init processes (runc, containerd, dockerd) that
+# legitimately read /etc/passwd during startup are excluded.
+# Only fires when an agent_id is attributed.
+
+event.type == "FILE_OPEN"
+AND regex_match("(?i)(/etc/(shadow|passwd|sudoers)|\\.(key|p12|pfx|jks)$|id_(rsa|ed25519|ecdsa)|aws/credentials|\\.env$|kubeconfig|\\.docker/config\\.json|service.account\\.json)", event.raw_data.file.filename)
+AND NOT in_allowlist(event.raw_data.file.filename, "allowed_file_paths")
+AND NOT regex_match("^(runc|containerd|dockerd|docker-init|crio|podman)", event.raw_data.file.comm)
+AND event.agent_id != ""

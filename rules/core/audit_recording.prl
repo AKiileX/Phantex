@@ -1,0 +1,69 @@
+## Phantex PRL — Agent Audit & DVR Recording Rules (Block AU)
+##
+## 6 rules detecting audit tampering, recording evasion, and compliance gaps.
+
+# Rule: recording_downgrade_during_investigation
+# Category: Audit Recording
+# Severity: critical
+# Attack Class: audit_tampering
+#
+# Recording level downgrade during active investigation
+
+recording.level_change AND investigation.active == true
+AND recording.new_level < recording.old_level
+
+---
+
+# Rule: audit_chain_integrity_failure
+# Category: Audit Recording
+# Severity: critical
+# Attack Class: audit_tampering
+#
+# Tamper-proof audit chain integrity verification failed
+
+audit_chain.verify == false
+
+---
+
+# Rule: legal_hold_bypass_attempt
+# Category: Audit Recording
+# Severity: critical
+# Attack Class: audit_tampering
+#
+# Attempt to delete recordings under active legal hold
+
+recording.delete_request AND legal_hold.active == true
+AND legal_hold.agent_id == recording.agent_id
+
+---
+
+# Rule: mass_recording_disable
+# Category: Audit Recording
+# Severity: high
+# Attack Class: audit_evasion
+#
+# Bulk disable of recording on multiple agents
+
+event.type == "RECORDING_DISABLE" AND count("RECORDING_DISABLE", "300s") > 5
+
+---
+
+# Rule: cross_tenant_replay_attempt
+# Category: Audit Recording
+# Severity: critical
+# Attack Class: tenant_isolation
+#
+# Cross-tenant DVR replay access attempt
+
+replay.session.tenant_id != actor.tenant_id
+
+---
+
+# Rule: export_without_verification
+# Category: Audit Recording
+# Severity: medium
+# Attack Class: compliance_gap
+#
+# Compliance export without recent chain verification
+
+compliance.export_request AND audit_chain.last_verified_age > 86400

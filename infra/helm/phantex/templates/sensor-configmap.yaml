@@ -1,0 +1,41 @@
+{{- if .Values.sensor.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "phantex.fullname" . }}-sensor-config
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sensor
+data:
+  # tenant_id exposed as a separate key for env var injection into the DaemonSet
+  tenant_id: {{ .Values.sensor.config.tenantID | default "default" | quote }}
+  sensor.yaml: |
+    # YAML keys match Go config struct tags in sensor/internal/config/config.go
+    log_level: {{ .Values.sensor.config.logLevel | quote }}
+    log_format: json
+    ebpf:
+      filter_mode: all
+      ringbuf_chan_size: 4096
+    transport:
+      gateway_addr: {{ .Values.sensor.config.gatewayAddress | quote }}
+      tls_enabled: false
+      batch_size: 500
+      batch_timeout: 2s
+      buffer_size: 10000
+      max_retries: 5
+      retry_interval: 2s
+    health:
+      enabled: true
+      addr: ":9090"
+    discovery:
+      scan_interval: 5s
+      tenant_slug: {{ .Values.sensor.config.tenantSlug | default "default" | quote }}
+      env_tag: {{ .Values.sensor.config.envTag | default "prod" | quote }}
+      check_environ: false
+    sdk_socket:
+      enabled: true
+      socket_path: /var/run/phantex/sdk.sock
+      max_conns: 50
+      max_line_size: 65536
+      rate_limit: 1000
+{{- end }}

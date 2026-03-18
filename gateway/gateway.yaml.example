@@ -1,0 +1,40 @@
+# Phantex Gateway — Configuration Template
+#
+# Copy to gateway.yaml and fill in real values:
+#   cp gateway.yaml.example gateway.yaml
+#
+# ⚠️  gateway.yaml is gitignored — NEVER commit secrets.
+
+log_level: info
+log_format: console
+
+grpc:
+  listen_addr: "0.0.0.0:50051"
+  tls_enabled: false
+  # Uncomment for production TLS:
+  # tls_cert_file: "/etc/phantex/tls/gateway.crt"
+  # tls_key_file: "/etc/phantex/tls/gateway.key"
+  # tls_ca_file: "/etc/phantex/tls/ca.crt"
+
+auth:
+  tokens:
+    # Map of sensor auth tokens → tenant UUIDs
+    # Generate with: python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+    "CHANGE_ME_generate_a_token_here": "a0000000-0000-0000-0000-000000000001"
+
+kafka:
+  enabled: true
+  brokers:
+    - "kafka:9092"
+  topic_prefix: "phantex.events"
+  batch_size: 100
+  batch_timeout: 1s
+  # Uncomment for production SASL_SSL:
+  # tls_enabled: true
+  # tls_cert_file: "/etc/phantex/tls/kafka-client.crt"
+  # tls_key_file: "/etc/phantex/tls/kafka-client.key"
+  # tls_ca_file: "/etc/phantex/tls/ca.crt"
+
+backend:
+  url: "http://phantex-backend:8000"
+  internal_token: "CHANGE_ME_strong_internal_token"

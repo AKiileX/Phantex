@@ -1,0 +1,20 @@
+# Rule: new_network_connection
+# Category: Behavioral Anomaly
+# Severity: medium
+# Attack Class: behavioral_anomaly
+#
+# Detects DNS lookups for domains associated with data exfiltration,
+# tunneling, or Command & Control (C2) infrastructure.
+#
+# Matches:
+#   - Dynamic DNS providers (duckdns, no-ip, dynu)
+#   - Tunneling services (ngrok, serveo, localtunnel)
+#   - Paste/file sharing sites (pastebin, transfer.sh, file.io)
+#   - Webhook testing tools (webhook.site, requestbin, pipedream)
+#   - Tor-related domains (.onion, .tor2web)
+#
+# In Phase 2, this will be enhanced with a per-agent learning phase
+# that tracks "normal" DNS patterns and alerts on never-seen-before domains.
+
+event.type == "NETWORK_DNS"
+AND regex_match("(?i)(duckdns\\.org|no-ip\\.(com|org)|dynu\\.com|ngrok\\.io|serveo\\.net|localtunnel\\.me|pastebin\\.com|hastebin\\.com|paste\\.ee|transfer\\.sh|file\\.io|webhook\\.site|requestbin|pipedream\\.net|\\.onion|\\.tor2web)", event.raw_data.dns.query_name)

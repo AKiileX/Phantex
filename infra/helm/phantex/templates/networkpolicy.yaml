@@ -1,0 +1,337 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $release := .Release.Name -}}
+# ── Default deny all ingress ────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "phantex.fullname" . }}-default-deny
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: phantex
+      app.kubernetes.io/instance: {{ $release }}
+  policyTypes:
+    - Ingress
+---
+# ── Dashboard: allow from ingress controller ────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "phantex.fullname" . }}-dashboard
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dashboard
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "phantex.selectorLabels" (dict "name" "phantex-dashboard" "release" $release) | nindent 6 }}
+      app.kubernetes.io/component: dashboard
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace | default "ingress-nginx" }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.dashboard.port }}
+---
+# ── Backend: allow from dashboard + ingress (API/WS) ───────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "phantex.fullname" . }}-backend
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "phantex.selectorLabels" (dict "name" "phantex-backend" "release" $release) | nindent 6 }}
+      app.kubernetes.io/component: backend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # From dashboard pods (nginx proxy)
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "phantex.selectorLabels" (dict "name" "phantex-dashboard" "release" $release) | nindent 14 }}
+              app.kubernetes.io/component: dashboard
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.port }}
+    # From ingress controller directly
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace | default "ingress-nginx" }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.port }}
+  egress:
+    # To PostgreSQL — scoped to data namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dataNamespace | default .Release.Namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.postgresql.port | default 5432 }}
+    # To Kafka — scoped to data namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dataNamespace | default .Release.Namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.kafka.port | default 9092 }}
+    # To Redis
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dataNamespace | default .Release.Namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.redis.port | default 6379 }}
+    # To ClickHouse HTTP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dataNamespace | default .Release.Namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.clickhouse.httpPort | default 8123 }}
+    # To Neo4j Bolt
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dataNamespace | default .Release.Namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.neo4j.boltPort | default 7687 }}
+    # To Trust Engine (gRPC scoring)
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "phantex.selectorLabels" (dict "name" "phantex-trust-engine" "release" $release) | nindent 14 }}
+              app.kubernetes.io/component: trust-engine
+      ports:
+        - protocol: TCP
+          port: {{ .Values.trustEngine.port }}
+    # DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# ── Storage Writer: allow egress to PG/Kafka/CH/Neo4j ─────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "phantex.fullname" . }}-storage-writer
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage-writer
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "phantex.selectorLabels" (dict "name" "phantex-storage-writer" "release" $release) | nindent 6 }}
+      app.kubernetes.io/component: storage-writer
+  policyTypes:
+    - Egress
+  egress:
+    # To PostgreSQL
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dataNamespace | default .Release.Namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.postgresql.port | default 5432 }}
+    # To Kafka
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dataNamespace | default .Release.Namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.kafka.port | default 9092 }}
+    # To ClickHouse HTTP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dataNamespace | default .Release.Namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.clickhouse.httpPort | default 8123 }}
+    # To Neo4j Bolt
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dataNamespace | default .Release.Namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.neo4j.boltPort | default 7687 }}
+    # To Trust Engine (gRPC scoring)
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "phantex.selectorLabels" (dict "name" "phantex-trust-engine" "release" $release) | nindent 14 }}
+              app.kubernetes.io/component: trust-engine
+      ports:
+        - protocol: TCP
+          port: {{ .Values.trustEngine.port }}
+    # DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# ── Gateway: allow from sensor pods ────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "phantex.fullname" . }}-gateway
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "phantex.selectorLabels" (dict "name" "phantex-gateway" "release" $release) | nindent 6 }}
+      app.kubernetes.io/component: gateway
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # From sensor DaemonSet pods (gRPC)
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "phantex.selectorLabels" (dict "name" "phantex-sensor" "release" $release) | nindent 14 }}
+              app.kubernetes.io/component: sensor
+      ports:
+        - protocol: TCP
+          port: {{ .Values.gateway.port }}
+    # From external sensors (outside cluster) — restrict to known CIDRs
+    {{- if .Values.networkPolicy.externalSensorCIDRs }}
+    - from:
+        {{- range .Values.networkPolicy.externalSensorCIDRs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.gateway.port }}
+    {{- end }}
+  egress:
+    # To Kafka — scoped to data namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dataNamespace | default .Release.Namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.kafka.port | default 9092 }}
+    # DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# ── Sensor: allow egress to gateway only ───────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "phantex.fullname" . }}-sensor
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sensor
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "phantex.selectorLabels" (dict "name" "phantex-sensor" "release" $release) | nindent 6 }}
+      app.kubernetes.io/component: sensor
+  policyTypes:
+    - Egress
+  egress:
+    # To gateway (gRPC)
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "phantex.selectorLabels" (dict "name" "phantex-gateway" "release" $release) | nindent 14 }}
+              app.kubernetes.io/component: gateway
+      ports:
+        - protocol: TCP
+          port: {{ .Values.gateway.port }}
+    # DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# ── Trust Engine: allow from backend + storage-writer (gRPC) ──────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "phantex.fullname" . }}-trust-engine
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: trust-engine
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "phantex.selectorLabels" (dict "name" "phantex-trust-engine" "release" $release) | nindent 6 }}
+      app.kubernetes.io/component: trust-engine
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # From backend pods (scoring requests)
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "phantex.selectorLabels" (dict "name" "phantex-backend" "release" $release) | nindent 14 }}
+              app.kubernetes.io/component: backend
+      ports:
+        - protocol: TCP
+          port: {{ .Values.trustEngine.port }}
+    # From storage-writer pods (batch scoring)
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "phantex.selectorLabels" (dict "name" "phantex-storage-writer" "release" $release) | nindent 14 }}
+              app.kubernetes.io/component: storage-writer
+      ports:
+        - protocol: TCP
+          port: {{ .Values.trustEngine.port }}
+  egress:
+    # To Neo4j (graph queries)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.dataNamespace | default .Release.Namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.neo4j.boltPort | default 7687 }}
+    # DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}

@@ -1,0 +1,95 @@
+# Phantex — Staging environment values
+#
+# Usage:
+#   helm install phantex . -f values.yaml -f values-staging.yaml
+
+global:
+  imageRegistry: "ghcr.io/akiilex"
+  imagePullPolicy: Always
+
+sensor:
+  enabled: true
+  config:
+    logLevel: debug
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+gateway:
+  replicas: 1
+  autoscaling:
+    enabled: false
+  podDisruptionBudget:
+    enabled: false
+
+backend:
+  replicas: 1
+  env:
+    PHANTEX_ENVIRONMENT: staging
+    PHANTEX_DEBUG: "false"
+    PHANTEX_LOG_LEVEL: DEBUG
+  autoscaling:
+    enabled: false
+  podDisruptionBudget:
+    enabled: false
+
+storageWriter:
+  replicas: 1
+  podDisruptionBudget:
+    enabled: false
+
+dashboard:
+  replicas: 1
+
+ingress:
+  enabled: true
+  className: nginx
+  host: staging.phantex.example.com
+  tls:
+    enabled: true
+    secretName: phantex-staging-tls
+
+postgresql:
+  internal: false
+  host: "phantex-staging-db.example.com"
+  port: 5432
+  database: phantex_staging
+  username: phantex_app
+  existingSecret: phantex-db-credentials
+  existingSecretKey: password
+
+kafka:
+  internal: false
+  bootstrapServers: "phantex-staging-kafka:9092"
+
+redis:
+  internal: false
+  host: "phantex-staging-redis.example.com"
+  port: 6379
+
+clickhouse:
+  internal: false
+  host: "phantex-staging-clickhouse.example.com"
+  httpPort: 8123
+  existingSecret: phantex-clickhouse-credentials
+  existingSecretKey: password
+
+neo4j:
+  internal: false
+  uri: "bolt://phantex-staging-neo4j:7687"
+  boltPort: 7687
+  existingSecret: phantex-neo4j-credentials
+  existingSecretKey: password
+
+secrets:
+  create: false
+  jwtSecret:
+    existingSecret: phantex-jwt
+    existingSecretKey: secret
+
+networkPolicy:
+  enabled: true

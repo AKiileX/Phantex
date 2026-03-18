@@ -1,0 +1,73 @@
+# Phantex Rule Engine — Deployment (Kafka consumer → PRL evaluation → alerts)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "phantex.fullname" . }}-rule-engine
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rule-engine
+spec:
+  replicas: {{ .Values.ruleEngine.replicas }}
+  selector:
+    matchLabels:
+      {{- include "phantex.selectorLabels" (dict "name" "phantex-rule-engine" "release" .Release.Name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "phantex.selectorLabels" (dict "name" "phantex-rule-engine" "release" .Release.Name) | nindent 8 }}
+        app.kubernetes.io/component: rule-engine
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "phantex.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: rule-engine
+          image: {{ include "phantex.image" (dict "global" .Values.global "image" .Values.ruleEngine.image "appVersion" .Chart.AppVersion) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command: ["python", "-m", "engine.main"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: PHANTEX_KAFKA_BOOTSTRAP
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            - name: PHANTEX_DB_HOST
+              value: {{ .Values.postgresql.host | quote }}
+            - name: PHANTEX_DB_PORT
+              value: {{ .Values.postgresql.port | default 5432 | quote }}
+            - name: PHANTEX_DB_NAME
+              value: {{ .Values.postgresql.database | quote }}
+            - name: PHANTEX_DB_USER
+              value: {{ .Values.postgresql.username | quote }}
+            - name: PHANTEX_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgresql.existingSecret }}
+                  key: {{ .Values.postgresql.existingSecretKey }}
+            - name: TRUST_ENGINE_ADDR
+              value: "{{ include "phantex.fullname" . }}-trust-engine:{{ .Values.trustEngine.port }}"
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import os; os.path.exists('/proc/1/status') or exit(1)"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.ruleEngine.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

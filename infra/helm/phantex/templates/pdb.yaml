@@ -1,0 +1,44 @@
+{{- if .Values.backend.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "phantex.fullname" . }}-backend
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  minAvailable: {{ .Values.backend.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "phantex.selectorLabels" (dict "name" "phantex-backend" "release" .Release.Name) | nindent 6 }}
+{{- end }}
+---
+{{- if .Values.gateway.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "phantex.fullname" . }}-gateway
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  minAvailable: {{ .Values.gateway.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "phantex.selectorLabels" (dict "name" "phantex-gateway" "release" .Release.Name) | nindent 6 }}
+{{- end }}
+---
+{{- if .Values.storageWriter.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "phantex.fullname" . }}-storage-writer
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage-writer
+spec:
+  minAvailable: {{ .Values.storageWriter.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "phantex.selectorLabels" (dict "name" "phantex-storage-writer" "release" .Release.Name) | nindent 6 }}
+{{- end }}

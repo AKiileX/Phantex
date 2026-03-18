@@ -1,0 +1,45 @@
+[project]
+name = "phantex-backend"
+version = "0.2.0"
+description = "Phantex — Runtime security platform for AI agents (Backend API)"
+requires-python = ">=3.12"
+license = {text = "Apache-2.0"}
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+filterwarnings = [
+    "error",                                       # Treat all warnings as errors (strict)
+    # ── Third-party noise we cannot fix ──────────
+    # XGBoost ctypes callback fires during interpreter shutdown — harmless
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "SIM"]
+ignore = [
+  "B008",   # Depends() in default args is required by FastAPI
+  "B017",   # assert blind exception in tests is acceptable
+  "B904",   # raise-from style — too noisy across existing codebase
+  "B007",   # unused loop variable — intentional in setup loops
+  "B027",   # empty abstract method body — optional override hooks
+  "N806",   # variable in function — too noisy for data-mapping code
+  "N803",   # argument name casing — vendor SDK callbacks use camelCase
+  "N815",   # variable in class scope — vendor/protobuf style
+  "N801",   # class name casing — matches external API naming (e.g. DTO)
+  "N802",   # function name casing — test names may have uppercase chars
+  "N817",   # CamelCase imported as acronym
+  "E501",   # line length enforced by formatter, not linter
+  "E402",   # module-level import not at top — conditional imports
+  "E701",   # multiple statements on one line — compact data defs
+  "E702",   # multiple statements on one line (semicolon)
+  "E741",   # ambiguous variable name — conventional loop vars
+  "SIM102", # collapsible if — readability preference
+  "SIM105", # contextlib.suppress — try/except/pass is clearer in context
+  "SIM117", # collapsible with — readability preference
+]

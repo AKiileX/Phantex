@@ -1,0 +1,19 @@
+# Rule: unusual_process_spawn
+# Category: Lateral Movement
+# Severity: high
+# Attack Class: lateral_movement
+#
+# Detects when a process execution event involves spawning suspicious child
+# processes. Agents that spawn shells, reverse shells, or unexpected binaries
+# may have been compromised via prompt injection or tool exploitation.
+#
+# Patterns: shell interpreters (bash, sh, zsh, dash, csh), common attack
+# tools (nc, ncat, socat, curl piped to shell, wget + execute, python -c),
+# and package managers that could install backdoors.
+#
+# Known AI runtime binaries (ollama, python, vllm, etc.) are excluded via
+# the allowed_process_comms allowlist.  Operators extend this via dashboard.
+
+event.type == "PROCESS_EXEC"
+AND regex_match("(?i)(/bin/(ba)?sh|/bin/zsh|/bin/dash|/bin/csh|\\bncat\\b|\\bnc\\b|\\bsocat\\b|\\bcurl\\b.*\\|.*sh|\\bwget\\b.*\\|.*sh|python[23]?\\s+-c|perl\\s+-e|ruby\\s+-e|\\bchmod\\b.*\\+x|\\b(apt|yum|pip)\\s+install)", event.raw_data.process_exec.argv)
+AND NOT in_allowlist(event.raw_data.process_exec.comm, "allowed_process_comms")

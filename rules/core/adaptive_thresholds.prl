@@ -1,0 +1,20 @@
+# Rule: adaptive_trust_threshold
+# Category: Adaptive Thresholds
+# Severity: high
+# Attack Class: trust_degradation
+#
+# Adaptive detection: uses the ML anomaly_score together with the trust
+# score to fire for agents that are both statistically anomalous AND have
+# degraded trust.  This catches slow-burn attacks where either signal alone
+# might not cross its threshold.
+#
+# Logic:
+#   trust_score < 0.6   (below "healthy" but not yet critical)
+#   AND anomaly_score > 0.7  (ML model flags anomaly)
+#   → combined signal → high-severity alert
+#
+# The anomaly_score comes from the ML inference pipeline (Phase 2, Block J).
+# The trust_score comes from the Rust Trust Graph Engine (Block K).
+
+trust_score(event.agent_id, "agent") < 0.6
+AND event.anomaly_score > 0.7

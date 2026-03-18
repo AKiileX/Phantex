@@ -1,0 +1,92 @@
+# ──────────────────────────────────────────────────────────────
+# Phantex PRL Policy — Sandbox Isolation Rules (Phase 4, Block AM5)
+#
+# These rules enforce sandbox policies by triggering sandbox
+# actions (isolate, quarantine) when suspicious behaviour is
+# detected inside agent sandboxes.
+#
+# Actions: sandbox_isolate, sandbox_quarantine, sandbox_restrict
+# Functions: sandbox_violation_count, is_quarantined, sandbox_tier
+# ──────────────────────────────────────────────────────────────
+
+# ── R-SANDBOX-01: Quarantine on repeated sandbox violations ─────
+# If an agent triggers 5+ sandbox violations in 5 minutes,
+# auto-quarantine the agent (intercept mode).
+rule sandbox_violation_threshold {
+    severity = "critical"
+    description = "Agent exceeded sandbox violation threshold — auto-quarantine"
+    action = "sandbox_quarantine"
+
+    event.type == "SANDBOX_VIOLATION" AND
+    sandbox_violation_count(event.agent_id, "5m") >= 5
+}
+
+# ── R-SANDBOX-02: Restrict on filesystem escape attempt ─────────
+# Detect attempts to access paths outside the sandbox allowlist.
+rule sandbox_fs_escape {
+    severity = "high"
+    description = "Agent attempted filesystem access outside sandbox boundary"
+    action = "sandbox_restrict"
+
+    event.type == "SANDBOX_VIOLATION" AND
+    event.raw_data.violation_type == "filesystem_denied" AND
+    regex_match("(/etc/shadow|/proc/[0-9]+/mem|/root/)", event.raw_data.target)
+}
+
+# ── R-SANDBOX-03: Network exfiltration from sandboxed agent ─────
+# Detect sandboxed agent trying to reach non-allowlisted hosts.
+rule sandbox_network_exfil {
+    severity = "critical"
+    description = "Sandboxed agent attempted unauthorized network access"
+    action = "sandbox_quarantine"
+
+    event.type == "SANDBOX_VIOLATION" AND
+    event.raw_data.violation_type == "network_denied" AND
+    NOT in_allowlist(event.raw_data.target, "approved_network_destinations")
+}
+
+# ── R-SANDBOX-04: Lateral movement between sandboxes ────────────
+# Detect if an agent tries to interact with another sandbox.
+rule sandbox_lateral_movement {
+    severity = "critical"
+    description = "Agent attempted cross-sandbox resource access (Alloy P3 violation)"
+    action = "sandbox_quarantine"
+
+    event.type == "RESOURCE_ACCESS" AND
+    contains(event.raw_data.resource_id, "sandbox:") AND
+    NOT contains(event.raw_data.resource_id, event.sandbox_id)
+}
+
+# ── R-SANDBOX-05: Memory limit approach warning ─────────────────
+# Warn when sandboxed agent uses > 80% of its memory limit.
+rule sandbox_memory_warning {
+    severity = "medium"
+    description = "Sandboxed agent approaching memory limit"
+    action = "alert"
+
+    event.type == "SANDBOX_METRIC" AND
+    event.raw_data.memory_usage_pct > 80
+}
+
+# ── R-SANDBOX-06: Timeout on long-running sandbox operation ─────
+# Flag sandbox operations that exceed their configured timeout.
+rule sandbox_timeout_violation {
+    severity = "high"
+    description = "Sandbox operation exceeded configured timeout"
+    action = "sandbox_restrict"
+
+    event.type == "SANDBOX_VIOLATION" AND
+    event.raw_data.violation_type == "timeout_exceeded"
+}
+
+# ── R-SANDBOX-07: Quarantine already-escalated agent on new activity ──
+# If a previously-escalated quarantine agent produces new violations,
+# re-quarantine immediately.
+rule sandbox_reescalation {
+    severity = "critical"
+    description = "Previously escalated agent produced new sandbox violations"
+    action = "sandbox_quarantine"
+
+    event.type == "SANDBOX_VIOLATION" AND
+    sandbox_violation_count(event.agent_id, "24h") >= 10
+}

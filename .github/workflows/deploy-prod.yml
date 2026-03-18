@@ -1,0 +1,169 @@
+# ============================================================================
+# Phantex — Deploy to Production
+# Manual trigger with canary rollout strategy.
+# ============================================================================
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (commit SHA, 7 chars)"
+        required: true
+        type: string
+      canary_weight:
+        description: "Initial canary traffic percentage"
+        required: false
+        default: "10"
+        type: string
+      skip_canary:
+        description: "Skip canary and deploy directly (emergency only)"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false   # Never cancel a production deploy
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/phantex
+  HELM_RELEASE: phantex
+  KUBE_NAMESPACE: phantex
+
+permissions:
+  contents: read
+  packages: read
+  id-token: write
+
+jobs:
+  # ── Gate: require manual approval ──────────────────────────────
+  approve:
+    name: Approval Gate
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - run: echo "Production deployment approved for tag ${{ inputs.image_tag }}"
+
+  # ── Canary Deploy ──────────────────────────────────────────────
+  canary:
+    name: Canary Deployment
+    runs-on: ubuntu-latest
+    needs: approve
+    if: ${{ !inputs.skip_canary }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - uses: azure/setup-helm@fe7b79cd5ee1e45176fcad797de68ecaf3ca4814 # v4.2.0
+        with:
+          version: v3.16.0
+
+      # ── Cloud Auth (same OIDC pattern as staging) ──────────────
+      # Uncomment the appropriate provider (see deploy-staging.yml)
+
+      - name: Deploy canary
+        run: |
+          helm upgrade --install ${{ env.HELM_RELEASE }} \
+            ./infra/helm/phantex \
+            --namespace ${{ env.KUBE_NAMESPACE }} \
+            --set global.image.tag=${{ inputs.image_tag }} \
+            --set global.image.registry=${{ env.REGISTRY }} \
+            --set sensor.updateStrategy.rollingUpdate.maxUnavailable="5%" \
+            --set backend.replicas=2 \
+            --set ingress.enabled=true \
+            --set ingress.host=${{ vars.PROD_DOMAIN || 'phantex.example.com' }} \  # Set in repo variables
+            --set ingress.tls.enabled=true \
+            --set ingress.tls.secretName=phantex-prod-tls \
+            --values infra/helm/phantex/values.yaml \
+            --wait \
+            --timeout 10m
+
+      - name: Run canary health checks
+        run: |
+          echo "=== Canary health check ==="
+          for i in $(seq 1 12); do
+            STATUS=$(curl -sf https://${{ vars.PROD_DOMAIN || 'phantex.example.com' }}/api/v1/health | jq -r '.status' || echo "unreachable")  # Set domain in repo variables
+            echo "Check $i/12: $STATUS"
+            if [ "$STATUS" != "healthy" ]; then
+              echo "Health check failed at attempt $i"
+              if [ $i -ge 3 ]; then
+                echo "Multiple failures — triggering rollback"
+                helm rollback ${{ env.HELM_RELEASE }} --namespace ${{ env.KUBE_NAMESPACE }}
+                exit 1
+              fi
+            fi
+            sleep 30
+          done
+          echo "Canary passed all health checks"
+
+      - name: Monitor error rates (5 min soak)
+        run: |
+          echo "Soaking for 5 minutes to monitor error rates..."
+          sleep 300
+
+          # Check pod restarts (indicator of crashes)
+          RESTARTS=$(kubectl -n ${{ env.KUBE_NAMESPACE }} get pods -l app.kubernetes.io/component=backend \
+            -o jsonpath='{.items[*].status.containerStatuses[0].restartCount}' | tr ' ' '\n' | sort -n | tail -1)
+
+          echo "Max backend pod restarts: $RESTARTS"
+          if [ "$RESTARTS" -gt 2 ]; then
+            echo "Too many restarts — rolling back canary"
+            helm rollback ${{ env.HELM_RELEASE }} --namespace ${{ env.KUBE_NAMESPACE }}
+            exit 1
+          fi
+
+          echo "Canary soak passed"
+
+  # ── Full Rollout ───────────────────────────────────────────────
+  full-rollout:
+    name: Full Production Rollout
+    runs-on: ubuntu-latest
+    needs: [approve, canary]
+    if: ${{ always() && (needs.approve.result == 'success') && (needs.canary.result == 'success' || inputs.skip_canary) }}
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - uses: azure/setup-helm@fe7b79cd5ee1e45176fcad797de68ecaf3ca4814 # v4.2.0
+        with:
+          version: v3.16.0
+
+      # ── Cloud Auth ─────────────────────────────────────────────
+      # Uncomment the appropriate provider
+
+      - name: Full production deploy
+        run: |
+          helm upgrade --install ${{ env.HELM_RELEASE }} \
+            ./infra/helm/phantex \
+            --namespace ${{ env.KUBE_NAMESPACE }} \
+            --set global.image.tag=${{ inputs.image_tag }} \
+            --set global.image.registry=${{ env.REGISTRY }} \
+            --set backend.autoscaling.enabled=true \
+            --set gateway.autoscaling.enabled=true \
+            --set networkPolicy.enabled=true \
+            --set ingress.enabled=true \
+            --set ingress.host=${{ vars.PROD_DOMAIN || 'phantex.example.com' }} \  # Set in repo variables
+            --set ingress.tls.enabled=true \
+            --set ingress.tls.secretName=phantex-prod-tls \
+            --values infra/helm/phantex/values.yaml \
+            --wait \
+            --timeout 10m
+
+      - name: Verify full rollout
+        run: |
+          kubectl -n ${{ env.KUBE_NAMESPACE }} rollout status deployment/${{ env.HELM_RELEASE }}-backend --timeout=5m
+          kubectl -n ${{ env.KUBE_NAMESPACE }} rollout status deployment/${{ env.HELM_RELEASE }}-gateway --timeout=5m
+          kubectl -n ${{ env.KUBE_NAMESPACE }} rollout status deployment/${{ env.HELM_RELEASE }}-dashboard --timeout=5m
+          kubectl -n ${{ env.KUBE_NAMESPACE }} rollout status daemonset/${{ env.HELM_RELEASE }}-sensor --timeout=10m
+
+      - name: Final smoke test
+        run: |
+          curl -sf https://${{ vars.PROD_DOMAIN || 'phantex.example.com' }}/api/v1/health | jq .  # Set domain in repo variables
+          echo "Production deployment complete: tag=${{ inputs.image_tag }}"
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Full rollout failed — initiating rollback"
+          helm rollback ${{ env.HELM_RELEASE }} --namespace ${{ env.KUBE_NAMESPACE }}
+          echo "=== Pod status after rollback ==="
+          kubectl -n ${{ env.KUBE_NAMESPACE }} get pods

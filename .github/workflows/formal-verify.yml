@@ -1,0 +1,199 @@
+# ============================================================================
+# Phantex — Formal Verification CI (TLA+ / Alloy / Z3)
+# Runs model checkers on PRs touching engine, policy, trust, or verification.
+# ============================================================================
+name: Formal Verification
+
+on:
+  # push:                   # disabled — no CI infra yet
+  #   branches: [main]
+  #   paths:
+  #     - "backend/engine/**"
+  #     - "backend/app/services/response/**"
+  #     - "backend/app/services/policy_service.py"
+  #     - "trust-engine/**"
+  #     - "rules/**"
+  #     - "verification/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/engine/**"
+      - "backend/app/services/response/**"
+      - "backend/app/services/policy_service.py"
+      - "trust-engine/**"
+      - "rules/**"
+      - "verification/**"
+  workflow_dispatch:          # manual trigger
+
+concurrency:
+  group: formal-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tlc-model-check:
+    name: TLC Model Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Set up Java 17
+        uses: actions/setup-java@6a0805fcefea3d4657a47ac4c165951e33482018 # v4.2.2
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache TLC jar
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: /tmp/tla2tools-1.8.0.jar
+          key: tlc-1.8.0
+
+      - name: Run TLC — Rule Evaluation Spec
+        working-directory: verification/tla
+        env:
+          TLC_WORKERS: "4"
+          TLC_DEPTH: "100"
+        run: |
+          chmod +x run_checks.sh
+          ./run_checks.sh rule_evaluation
+
+      - name: Run TLC — Policy Engine Spec
+        working-directory: verification/tla
+        env:
+          TLC_WORKERS: "4"
+          TLC_DEPTH: "100"
+        run: ./run_checks.sh policy_engine
+
+      - name: Upload verification results
+        if: always()
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+        with:
+          name: tlc-results
+          path: verification/tla/results/
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        working-directory: verification/tla
+        run: |
+          mkdir -p results
+          echo "## TLA+ Formal Verification Results" >> $GITHUB_STEP_SUMMARY
+
+  # ── Alloy — Sandbox Isolation ──────────────────────────
+  alloy-sandbox-check:
+    name: Alloy Sandbox Isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Set up Java 17
+        uses: actions/setup-java@6a0805fcefea3d4657a47ac4c165951e33482018 # v4.2.2
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache Alloy jar
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        with:
+          path: /tmp/alloy-6.1.0.jar
+          key: alloy-6.1.0
+
+      - name: Run Alloy — Sandbox Isolation Spec
+        working-directory: verification/alloy
+        run: |
+          chmod +x run_alloy.sh
+          ./run_alloy.sh
+
+      - name: Upload Alloy results
+        if: always()
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+        with:
+          name: alloy-results
+          path: verification/alloy/results/
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Alloy Sandbox Isolation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| P1: Resource Containment | Checked |" >> $GITHUB_STEP_SUMMARY
+          echo "| P2: Quarantine Capture | Checked |" >> $GITHUB_STEP_SUMMARY
+          echo "| P3: No Lateral Movement | Checked |" >> $GITHUB_STEP_SUMMARY
+          echo "| P4: Cross-Tenant Isolation | Checked |" >> $GITHUB_STEP_SUMMARY
+          echo "| P5: Tool Mediation Safety | Checked |" >> $GITHUB_STEP_SUMMARY
+
+  # ── Z3 — Trust Graph Invariants ────────────────────────
+  z3-trust-check:
+    name: Z3 Trust Graph Invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install z3-solver
+        run: pip install z3-solver
+
+      - name: Run Z3 — Trust Graph Invariants
+        run: |
+          set -o pipefail
+          python verification/z3/trust_graph.py --json | tee verification/z3/results.json
+
+      - name: Check results
+        run: |
+          python -c "
+          import json, sys
+          with open('verification/z3/results.json') as f:
+              data = json.load(f)
+          if not data['passed']:
+              failed = [c for c in data['checks'] if c['result'] != 'proved']
+              for c in failed:
+                  print(f\"FAIL: {c['name']} — {c['property']}\")
+                  print(f\"  {c['details']}\")
+              sys.exit(1)
+          print(f\"All {len(data['checks'])} Z3 invariants proved.\")
+          "
+
+      - name: Upload Z3 results
+        if: always()
+        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # v4.3.1
+        with:
+          name: z3-results
+          path: verification/z3/results.json
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Z3 Trust Graph Verification Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f verification/z3/results.json ]; then
+            python -c "
+          import json
+          with open('verification/z3/results.json') as f:
+              data = json.load(f)
+          print('| Invariant | Property | Result | Time |')
+          print('|-----------|----------|--------|------|')
+          for c in data['checks']:
+              icon = '✅' if c['result'] == 'proved' else '❌'
+              print(f\"| {c['name']} | {c['property']} | {icon} {c['result']} | {c['elapsed_ms']:.1f}ms |\")
+          " >> $GITHUB_STEP_SUMMARY
+          fi

@@ -1,0 +1,36 @@
+{{- if .Values.clickhouse.schemaInit.enabled }}
+# ConfigMap containing all ClickHouse schema SQL files.
+# Mounted into the clickhouse-schema-init Job to apply on deploy.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "phantex.fullname" . }}-clickhouse-schema
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse-schema
+data:
+  {{- $schemaDir := "clickhouse-schema" }}
+  {{- range $path, $_ := .Files.Glob "clickhouse-schema/*.sql" }}
+  {{ base $path }}: |
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
+  apply.sh: |
+    #!/bin/sh
+    set -e
+    CH_URL="http://${CH_HOST}:${CH_PORT}/?user=${CH_USER}&password=${CH_PASSWORD}"
+    echo "Applying ClickHouse schemas to ${CH_HOST}:${CH_PORT}..."
+    for f in /schema/*.sql; do
+      echo "--- $(basename "$f") ---"
+      # Split on semicolons and apply each statement
+      awk 'BEGIN{RS=";"} NF{print $0";"}' "$f" | while IFS= read -r stmt; do
+        trimmed=$(echo "$stmt" | sed '/^[[:space:]]*$/d' | sed 's/;$//')
+        [ -z "$trimmed" ] && continue
+        if printf '%s' "$trimmed" | curl -sf -X POST "${CH_URL}" --data-binary @-; then
+          echo "  OK"
+        else
+          echo "  FAIL (non-fatal, may already exist)"
+        fi
+      done
+    done
+    echo "Schema init complete."
+{{- end }}

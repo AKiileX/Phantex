@@ -1,0 +1,82 @@
+# Phantex Trust Engine — Deployment (Rust gRPC trust graph)
+{{- if .Values.trustEngine.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "phantex.fullname" . }}-trust-engine
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: trust-engine
+spec:
+  replicas: {{ .Values.trustEngine.replicas }}
+  selector:
+    matchLabels:
+      {{- include "phantex.selectorLabels" (dict "name" "phantex-trust-engine" "release" .Release.Name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "phantex.selectorLabels" (dict "name" "phantex-trust-engine" "release" .Release.Name) | nindent 8 }}
+        app.kubernetes.io/component: trust-engine
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "phantex.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: trust-engine
+          image: {{ include "phantex.image" (dict "global" .Values.global "image" .Values.trustEngine.image "appVersion" .Chart.AppVersion) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.trustEngine.port }}
+              protocol: TCP
+          env:
+            - name: TRUST_ENGINE__GRPC_ADDR
+              value: "[::]:{{ .Values.trustEngine.port }}"
+            {{- if .Values.trustEngine.apiKey }}
+            - name: TRUST_ENGINE__AUTH__API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: phantex-trust-engine-credentials
+                  key: api-key
+            {{- end }}
+            - name: TRUST_ENGINE__SNAPSHOT__DIR
+              value: /data/snapshots
+          livenessProbe:
+            grpc:
+              port: {{ .Values.trustEngine.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            grpc:
+              port: {{ .Values.trustEngine.port }}
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.trustEngine.resources | nindent 12 }}
+          volumeMounts:
+            - name: snapshots
+              mountPath: /data/snapshots
+      volumes:
+        - name: snapshots
+          {{- if .Values.trustEngine.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "phantex.fullname" . }}-trust-snapshots
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

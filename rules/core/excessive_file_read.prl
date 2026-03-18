@@ -1,0 +1,14 @@
+# Rule: excessive_file_read
+# Category: Data Exfiltration
+# Severity: medium
+# Attack Class: exfiltration
+#
+# Detects agents reading an abnormally high number of UNIQUE files in a short
+# window. May indicate an agent attempting to enumerate and exfiltrate file
+# contents.
+#
+# Threshold: more than 50 unique filenames in 60 seconds.
+# Uses count_distinct() to count unique files, not total read events.
+# This catches bulk file scanning while allowing repeated reads of the same file.
+
+event.type == "FILE_READ" AND count_distinct("FILE_READ", "raw_data.filename", "60s") > 50

@@ -1,0 +1,77 @@
+# Phantex Gateway — Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "phantex.fullname" . }}-gateway
+  labels:
+    {{- include "phantex.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  {{- if not .Values.gateway.autoscaling.enabled }}
+  replicas: {{ .Values.gateway.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "phantex.selectorLabels" (dict "name" "phantex-gateway" "release" .Release.Name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "phantex.selectorLabels" (dict "name" "phantex-gateway" "release" .Release.Name) | nindent 8 }}
+        app.kubernetes.io/component: gateway
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "phantex.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.gateway.terminationGracePeriodSeconds | default 30 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if .Values.gateway.topologySpreadConstraints.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ .Values.gateway.topologySpreadConstraints.maxSkew }}
+          topologyKey: {{ .Values.gateway.topologySpreadConstraints.topologyKey }}
+          whenUnsatisfiable: {{ .Values.gateway.topologySpreadConstraints.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "phantex.selectorLabels" (dict "name" "phantex-gateway" "release" .Release.Name) | nindent 14 }}
+      {{- end }}
+      containers:
+        - name: gateway
+          image: {{ include "phantex.image" (dict "global" .Values.global "image" .Values.gateway.image "appVersion" .Chart.AppVersion) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          ports:
+            - containerPort: {{ .Values.gateway.port }}
+              protocol: TCP
+          env:
+            - name: PHANTEX_KAFKA_BOOTSTRAP
+              value: {{ .Values.kafka.bootstrapServers | quote }}
+            - name: PHANTEX_LISTEN_ADDR
+              value: {{ printf "0.0.0.0:%d" (.Values.gateway.port | int) | quote }}
+          readinessProbe:
+            grpc:
+              port: {{ .Values.gateway.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            grpc:
+              port: {{ .Values.gateway.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}

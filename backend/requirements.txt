@@ -1,0 +1,88 @@
+# ============================================================================
+# Phantex Backend — Python Dependencies
+# Pin exact versions for reproducible builds.
+# ============================================================================
+
+# --- Web Framework ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# --- Database ---
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.1
+
+# --- Auth ---
+pyjwt==2.10.1
+bcrypt==4.2.1
+
+# --- SSO / OIDC (Phase 3 — Block S) ---
+authlib==1.4.1
+cryptography==44.0.0
+defusedxml==0.7.1
+signxml==4.0.2
+cachetools==5.5.0
+
+# --- Validation & Settings ---
+pydantic==2.10.4
+pydantic-settings==2.7.1
+email-validator==2.3.0
+
+# --- HTTP & Middleware ---
+python-multipart==0.0.20
+# Note: Starlette is managed as a FastAPI transitive dependency
+
+# --- Observability ---
+structlog==24.4.0
+
+# --- Kafka ---
+aiokafka==0.13.0
+kafka-python-ng>=2.2.2
+cramjam==2.11.0
+
+# --- gRPC (trust engine client) ---
+grpcio==1.78.0
+protobuf==6.31.1
+
+# --- Redis ---
+redis[hiredis]==5.2.1
+
+# --- ClickHouse ---
+clickhouse-connect==0.8.12
+
+# --- Neo4j ---
+neo4j==5.27.0
+
+# --- Vault ---
+httpx==0.28.1
+
+# --- Testing ---
+pytest==8.3.4
+pytest-asyncio==0.25.0
+
+# --- Utilities ---
+python-dateutil==2.9.0.post0
+
+# --- ML Pipeline (Sprint 3 / Block J) ---
+scikit-learn==1.6.1
+xgboost==2.1.4
+numpy==2.2.3
+torch==2.6.0+cpu
+
+# --- ML Security (J5) ---
+scipy==1.15.2
+shap==0.46.0
+
+# --- Compliance Reports (Block T) ---
+fpdf2==2.8.3
+
+# --- GraphQL API (Phase 4 — Block AE) ---
+strawberry-graphql[fastapi]==0.262.1
+
+# --- Formal Verification (Phase 4 — Block AF) ---
+z3-solver==4.13.4.0
+
+# --- Phantex SDK (local package — instrumentation hooks for AI frameworks) ---
+# Installed from ../sdk/python via Dockerfile COPY; zero hard deps.
+# In Docker: pip install /build/sdk-python
+# Locally:   pip install -e ../sdk/python

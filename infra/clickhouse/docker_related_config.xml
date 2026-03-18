@@ -1,0 +1,6 @@
+<clickhouse>
+    <!-- Override default Docker config: single IPv4 listener avoids
+         duplicate-bind warnings on dual-stack systems. -->
+    <listen_host>0.0.0.0</listen_host>
+    <listen_try>1</listen_try>
+</clickhouse>

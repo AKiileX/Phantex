@@ -1,0 +1,12 @@
+# Rule: trust_permission_escalation
+# Category: Adaptive Thresholds
+# Severity: high
+# Attack Class: privilege_escalation
+#
+# Fires when a low-trust agent attempts permission escalation.
+# Agents with trust < 0.5 should not be escalating privileges — this
+# pattern indicates a compromised agent trying to expand access.
+
+trust_score(event.agent_id, "agent") < 0.5
+AND event.type == "PERMISSION_CHANGE"
+AND event.raw_data.direction == "escalate"

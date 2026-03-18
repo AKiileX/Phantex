@@ -1,0 +1,129 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025-2026 The Phantex Authors
+
+syntax = "proto3";
+package phantex.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/AKiileX/Phantex/proto/gen/phantex/v1";
+
+// TrustService — high-performance trust score queries served by the Rust
+// trust-engine.  The Python backend uses this to integrate trust scores
+// into PRL rules and ML features.
+service TrustService {
+    // Query the trust score for any entity (agent, tool, resource, network dest).
+    rpc GetTrustScore(GetTrustScoreRequest)       returns (GetTrustScoreResponse);
+
+    // Return the local neighbourhood of an entity (edges + adjacent nodes).
+    rpc GetTrustGraph(GetTrustGraphRequest)        returns (GetTrustGraphResponse);
+
+    // Push a single event update into the trust graph (edge creation / weight update).
+    rpc UpdateEvent(UpdateEventRequest)            returns (UpdateEventResponse);
+
+    // Stream many events efficiently (used by the Kafka bridge consumer).
+    rpc BatchUpdateEvents(stream UpdateEventRequest) returns (BatchUpdateResponse);
+
+    // Trigger a full trust propagation pass (PageRank).
+    rpc PropagateScores(PropagateRequest)          returns (PropagateResponse);
+
+    // Health probe.
+    rpc HealthCheck(HealthCheckRequest)            returns (HealthCheckResponse);
+}
+
+// ── Requests / Responses ────────────────────────────────────────────────────
+
+message GetTrustScoreRequest {
+    string tenant_id   = 1;
+    string entity_id   = 2;  // Agent PAID, tool name, resource path, or IP:port
+    string entity_type = 3;  // "agent" | "tool" | "resource" | "network_dest"
+}
+
+message GetTrustScoreResponse {
+    double trust_score                       = 1;
+    repeated TrustFactor factors             = 2;
+    google.protobuf.Timestamp last_updated   = 3;
+    string entity_id                         = 4;
+    string entity_type                       = 5;
+}
+
+message TrustFactor {
+    string name   = 1;  // "history", "behavior", "permissions", "reputation"
+    double weight = 2;
+    double value  = 3;
+}
+
+message GetTrustGraphRequest {
+    string tenant_id   = 1;
+    string entity_id   = 2;
+    string entity_type = 3;
+    uint32 depth       = 4;  // How many hops from the entity (default 1)
+}
+
+message TrustGraphNode {
+    string id          = 1;
+    string entity_type = 2;
+    double trust_score = 3;
+    map<string, string> metadata = 4;
+}
+
+message TrustGraphEdge {
+    string source_id   = 1;
+    string target_id   = 2;
+    string edge_type   = 3;  // "uses", "accesses", "connects_to", "delegates"
+    uint64 count       = 4;
+    double weight      = 5;
+    google.protobuf.Timestamp last_seen = 6;
+}
+
+message GetTrustGraphResponse {
+    repeated TrustGraphNode nodes = 1;
+    repeated TrustGraphEdge edges = 2;
+}
+
+message UpdateEventRequest {
+    string tenant_id     = 1;
+    string source_id     = 2;  // Agent PAID
+    string source_type   = 3;
+    string target_id     = 4;  // Tool name, resource path, IP:port, or PAID
+    string target_type   = 5;
+    string event_type    = 6;  // "tool_call", "file_access", "network_connect", "delegation"
+    string severity      = 7;  // "low", "medium", "high", "critical"
+    uint64 bytes         = 8;  // For network events
+    google.protobuf.Timestamp timestamp = 9;
+}
+
+message UpdateEventResponse {
+    bool accepted         = 1;
+    double source_score   = 2;  // Updated trust score for the source
+    double target_score   = 3;
+}
+
+message BatchUpdateResponse {
+    uint64 accepted = 1;
+    uint64 rejected = 2;
+}
+
+message PropagateRequest {
+    string tenant_id    = 1;  // Empty = all tenants
+    uint32 max_iterations = 2;  // 0 = use default (20)
+    double convergence_threshold = 3;  // 0 = use default (1e-6)
+}
+
+message PropagateResponse {
+    uint32 iterations     = 1;
+    double max_delta      = 2;
+    bool   converged      = 3;
+    uint64 nodes_updated  = 4;
+    double elapsed_ms     = 5;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+    string status       = 1;  // "SERVING", "NOT_SERVING"
+    uint64 total_nodes  = 2;
+    uint64 total_edges  = 3;
+    uint64 tenants      = 4;
+    double uptime_secs  = 5;
+}

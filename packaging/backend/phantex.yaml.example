@@ -1,0 +1,67 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PHANTEX — Backend Single-Binary Configuration
+#
+# Environment variables for configuring the binary.
+# Copy to `phantex.yaml` and place next to the binary, or set as env vars.
+# ─────────────────────────────────────────────────────────────────────────────
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 2
+  log_level: "info"
+
+database:
+  # PostgreSQL connection
+  host: "localhost"
+  port: 5432
+  name: "phantex"
+  user: "phantex_admin"
+  password: ""                     # PHANTEX_DB_PASSWORD env var recommended
+  pool_min: 5
+  pool_max: 20
+
+kafka:
+  bootstrap_servers: "localhost:9092"
+  consumer_group: "phantex"
+  auto_offset_reset: "latest"
+
+redis:
+  url: "redis://localhost:6379/0"
+
+clickhouse:
+  host: "localhost"
+  port: 8123
+  database: "phantex"
+  user: "phantex"
+  password: ""                     # PHANTEX_CH_PASSWORD env var recommended
+
+neo4j:
+  uri: "bolt://localhost:7687"
+  user: "neo4j"
+  password: ""                     # PHANTEX_NEO4J_PASSWORD env var recommended
+
+trust_engine:
+  grpc_address: "localhost:50051"
+  tls_enabled: false
+
+models:
+  # Path to ML model artifacts directory
+  path: "./models"
+  poll_interval_sec: 300
+  shadow_mode_requests: 1000
+
+auth:
+  jwt_secret: ""                   # PHANTEX_JWT_SECRET — REQUIRED
+  jwt_algorithm: "HS256"
+  access_token_expire_minutes: 30
+  # SSO (optional)
+  saml_metadata_url: ""
+  oidc_issuer_url: ""
+  oidc_client_id: ""
+  oidc_client_secret: ""
+
+encryption:
+  # Ed25519 key paths for model signing
+  signing_private_key: ""          # Path to Ed25519 private key (PEM)
+  signing_public_key: ""           # Path to Ed25519 public key (PEM)

@@ -1,0 +1,35 @@
+# ClickHouse standalone compose for development/testing.
+# Normally ClickHouse is started via the main docker-compose.dev.yml.
+# This file is for standalone testing only.
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.1-alpine
+    container_name: phantex-clickhouse
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8123:8123"   # HTTP interface
+      - "127.0.0.1:9000:9000"   # Native TCP
+    volumes:
+      - phantex-ch-data:/var/lib/clickhouse
+      - ./schema:/docker-entrypoint-initdb.d:ro
+      - ./clickhouse-config.xml:/etc/clickhouse-server/config.d/phantex.xml:ro
+    environment:
+      CLICKHOUSE_DB: phantex
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-phantex}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-phantex-dev-password}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  phantex-ch-data:
+    name: phantex-ch-data

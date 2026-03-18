@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phantex-sdk"
+version = "0.1.0"
+description = "Phantex runtime security SDK — instrument AI agent frameworks"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+authors = [{name = "Phantex", email = "starxsec@proton.me"}]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+# Zero hard dependencies — all frameworks are optional
+dependencies = []
+
+[project.optional-dependencies]
+langchain = ["langchain-core>=0.1.0"]
+autogen = ["pyautogen>=0.2.0"]
+crewai = ["crewai>=0.1.0"]
+mcp = ["mcp>=1.0.0"]
+http = ["requests>=2.28.0", "httpx>=0.24.0"]
+grpc = ["grpcio>=1.60.0", "protobuf>=4.25.0"]
+all = [
+    "langchain-core>=0.1.0",
+    "pyautogen>=0.2.0",
+    "crewai>=0.1.0",
+    "mcp>=1.0.0",
+    "requests>=2.28.0",
+    "httpx>=0.24.0",
+    "grpcio>=1.60.0",
+    "protobuf>=4.25.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/AKiileX/Phantex"
+Repository = "https://github.com/AKiileX/Phantex"
+Issues = "https://github.com/AKiileX/Phantex/issues"
+
+[tool.setuptools.packages.find]
+include = ["phantex_sdk*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "SIM"]
+ignore = [
+  "B008",
+  "B017",
+  "B904",
+  "B007",
+  "B027",
+  "N806",
+  "N803",
+  "N815",
+  "N801",
+  "N802",
+  "N817",
+  "E501",
+  "E402",
+  "E701",
+  "E702",
+  "E741",
+  "SIM102",
+  "SIM105",
+  "SIM117",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
