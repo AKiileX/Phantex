@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025-2026 The Phantex Authors
+
 // Phantex sensor service — gRPC interface between sensor and gateway.
 //
 // The sensor opens a bidirectional stream to the gateway and pushes

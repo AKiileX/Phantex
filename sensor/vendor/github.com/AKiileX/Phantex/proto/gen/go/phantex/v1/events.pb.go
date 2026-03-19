@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025-2026 The Phantex Authors
+
 // Phantex event schema — canonical event format used everywhere:
 // sensor → gateway → Kafka → storage → analytics → API
 //
