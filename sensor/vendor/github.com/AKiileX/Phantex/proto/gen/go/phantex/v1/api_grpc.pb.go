@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2025-2026 The Phantex Authors
+
 // Phantex internal API — service-to-service gRPC for backend components.
 //
 // This service is NOT exposed to sensors. It's used for:
