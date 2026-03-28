@@ -18,7 +18,7 @@ bcrypt==4.2.1
 
 # --- SSO / OIDC (Phase 3 — Block S) ---
 authlib==1.4.1
-cryptography==44.0.0
+cryptography==46.0.6
 defusedxml==0.7.1
 signxml==4.0.2
 cachetools==5.5.0
